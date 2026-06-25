@@ -1,0 +1,95 @@
+:root {
+  --bg: #0a0b14;
+  --bg-2: #0f1120;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #e8eaf2;
+  --text-dim: #9aa0b4;
+  --text-faint: #5d6480;
+
+  --accent: #7c5cff;
+  --accent-2: #22d3ee;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --blue: #60a5fa;
+  --red: #f87171;
+  --gray: #6b7280;
+
+  --grad: linear-gradient(135deg, #7c5cff 0%, #22d3ee 100%);
+  --grad-soft: linear-gradient(135deg, rgba(124, 92, 255, 0.18), rgba(34, 211, 238, 0.12));
+
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.6);
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
+  overflow-x: hidden;
+}
+/* jonli, sekin harakatlanuvchi fon nuri */
+body::before {
+  content: '';
+  position: fixed; inset: -20%;
+  z-index: -1;
+  background:
+    radial-gradient(700px 480px at 12% -8%, rgba(124, 92, 255, 0.20), transparent 60%),
+    radial-gradient(720px 460px at 100% 0%, rgba(34, 211, 238, 0.14), transparent 55%),
+    radial-gradient(680px 560px at 50% 120%, rgba(124, 92, 255, 0.12), transparent 60%);
+  animation: bg-drift 18s ease-in-out infinite alternate;
+}
+@keyframes bg-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(-2%, 1.5%, 0) scale(1.08); }
+}
+
+#app { min-height: 100%; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* transitions */
+.list-enter-active, .list-leave-active { transition: all 0.4s cubic-bezier(.2,.8,.2,1); }
+.list-enter-from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+.list-leave-to { opacity: 0; transform: translateX(20px); }
+.list-move { transition: transform 0.4s cubic-bezier(.2,.8,.2,1); }
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5); }
+  70% { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,241 @@
+// Package api HTTP endpointlarni e'lon qiladi (frontend kontraktiga mos).
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/salesdoc/monitoring-api/internal/onlinepbx"
+	"github.com/salesdoc/monitoring-api/internal/store"
+)
+
+type Server struct {
+	store   *store.Store
+	pbx     *onlinepbx.Client
+	origins []string
+	domain  string
+	wsPort  string
+	webDir  string
+}
+
+func NewServer(st *store.Store, pbx *onlinepbx.Client, origins []string, domain, wsPort, webDir string) *Server {
+	return &Server{store: st, pbx: pbx, origins: origins, domain: domain, wsPort: wsPort, webDir: webDir}
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /api/config", s.handleConfig)
+	mux.HandleFunc("GET /api/monitoring/keys", s.handleKeys)
+	mux.HandleFunc("GET /api/monitoring/data", s.handleData)
+	mux.HandleFunc("GET /api/monitoring/bigData", s.handleBigData)
+	mux.HandleFunc("GET /api/monitoring/operatorTime", s.handleOperatorTime)
+	mux.HandleFunc("GET /api/monitoring/fifo", s.handleFifo)
+	mux.HandleFunc("GET /api/monitoring/users", s.handleUsers)
+	// statik UI (SPA fallback bilan) — barcha boshqa GET so'rovlar
+	mux.HandleFunc("GET /", s.handleStatic)
+	return s.cors(mux)
+}
+
+// handleConfig frontend uchun ochiq sozlamalar (auth talab qilmaydi).
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"domain": s.domain,
+		"wsPort": s.wsPort,
+	})
+}
+
+// handleStatic build qilingan Vue UI'ni xizmat qiladi; topilmasa index.html (SPA).
+func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
+	if s.webDir == "" {
+		writeErr(w, http.StatusNotFound, "UI build qilinmagan (WEB_DIR yo'q)")
+		return
+	}
+	clean := filepath.Clean(r.URL.Path)
+	full := filepath.Join(s.webDir, clean)
+	// papkadan tashqariga chiqishni oldini olish
+	if !strings.HasPrefix(full, filepath.Clean(s.webDir)) {
+		http.NotFound(w, r)
+		return
+	}
+	if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+		http.ServeFile(w, r, full)
+		return
+	}
+	// SPA fallback
+	http.ServeFile(w, r, filepath.Join(s.webDir, "index.html"))
+}
+
+// ---- CORS ----
+
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if s.allowOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", originOrStar(origin, s.origins))
+			w.Header().Set("Vary", "Origin")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) allowOrigin(origin string) bool {
+	for _, o := range s.origins {
+		if o == "*" || o == origin {
+			return true
+		}
+	}
+	return false
+}
+
+func originOrStar(origin string, allowed []string) string {
+	for _, o := range allowed {
+		if o == "*" {
+			if origin != "" {
+				return origin // credentials uchun aniq origin qaytaramiz
+			}
+			return "*"
+		}
+	}
+	return origin
+}
+
+// ---- Handlers ----
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// /api/monitoring/keys → {key_and_id, auth_key}
+func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	token, err := s.pbx.Token(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "auth: "+err.Error())
+		return
+	}
+	wsKey, _ := s.pbx.WSKey(ctx)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"key_and_id": token,
+		"auth_key":   wsKey,
+	})
+}
+
+// /api/monitoring/data?gateway=&from=&to=  (unix soniya)
+func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, _ := strconv.ParseInt(q.Get("from"), 10, 64)
+	to, _ := strconv.ParseInt(q.Get("to"), 10, 64)
+	if from == 0 || to == 0 {
+		writeErr(w, http.StatusBadRequest, "from va to (unix soniya) majburiy")
+		return
+	}
+	rows, err := s.store.CallsByRange(r.Context(), q.Get("gateway"), from, to)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+// /api/monitoring/bigData?date=YYYY-MM-DD
+func (s *Server) handleBigData(w http.ResponseWriter, r *http.Request) {
+	dateStr := r.URL.Query().Get("date")
+	day := time.Now()
+	if dateStr != "" {
+		// mahalliy vaqt zonasida (TZ=Asia/Tashkent) parse qilamiz
+		d, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "date format: YYYY-MM-DD")
+			return
+		}
+		day = d
+	}
+	rows, err := s.store.CallsByDay(r.Context(), day)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+// /api/monitoring/operatorTime?from=&to=  yoki  ?date=YYYY-MM-DD
+func (s *Server) handleOperatorTime(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var from, to int64
+	if d := q.Get("date"); d != "" {
+		day, err := time.ParseInLocation("2006-01-02", d, time.Local)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "date format: YYYY-MM-DD")
+			return
+		}
+		from = day.Unix()
+		to = from + 86400 - 1
+	} else {
+		from, _ = strconv.ParseInt(q.Get("from"), 10, 64)
+		to, _ = strconv.ParseInt(q.Get("to"), 10, 64)
+	}
+	if from == 0 || to == 0 {
+		writeErr(w, http.StatusBadRequest, "from/to yoki date majburiy")
+		return
+	}
+	stats, err := s.store.OperatorTime(r.Context(), from, to)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// /api/monitoring/users → operator ro'yxati (extension → ism)
+func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	users, err := s.pbx.UserGet(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, users)
+}
+
+// /api/monitoring/fifo → jonli navbatlar/operatorlar (OnlinePBX'dan to'g'ridan-to'g'ri)
+func (s *Server) handleFifo(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	fifos, err := s.pbx.FifoGet(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "1", "data": fifos})
+}
+
+// ---- helpers ----
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("json yozishda xato: %v", err)
+	}
+}
+
+func writeErr(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}

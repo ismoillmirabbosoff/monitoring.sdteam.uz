@@ -12,21 +12,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/salesdoc/monitoring-api/internal/email"
 	"github.com/salesdoc/monitoring-api/internal/onlinepbx"
 	"github.com/salesdoc/monitoring-api/internal/store"
 )
 
 type Server struct {
-	store   *store.Store
-	pbx     *onlinepbx.Client
-	origins []string
-	domain  string
-	wsPort  string
-	webDir  string
+	store     *store.Store
+	pbx       *onlinepbx.Client
+	email     *email.Sender
+	origins   []string
+	domain    string
+	wsPort    string
+	webDir    string
+	adminPass string
 }
 
-func NewServer(st *store.Store, pbx *onlinepbx.Client, origins []string, domain, wsPort, webDir string) *Server {
-	return &Server{store: st, pbx: pbx, origins: origins, domain: domain, wsPort: wsPort, webDir: webDir}
+func NewServer(st *store.Store, pbx *onlinepbx.Client, em *email.Sender, origins []string, domain, wsPort, webDir, adminPass string) *Server {
+	return &Server{store: st, pbx: pbx, email: em, origins: origins, domain: domain, wsPort: wsPort, webDir: webDir, adminPass: adminPass}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -39,6 +42,38 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/monitoring/operatorTime", s.handleOperatorTime)
 	mux.HandleFunc("GET /api/monitoring/fifo", s.handleFifo)
 	mux.HandleFunc("GET /api/monitoring/users", s.handleUsers)
+	mux.HandleFunc("GET /api/monitoring/hidden", s.handleHidden)
+	mux.HandleFunc("GET /api/monitoring/stats", s.handleStats)
+	// --- Auth (email + kod) ---
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
+	mux.HandleFunc("GET /api/auth/me", s.handleMe)
+	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	// --- Admin: foydalanuvchilar va sessiyalar ---
+	mux.HandleFunc("GET /api/admin/users", s.requireAdmin(s.handleListUsers))
+	mux.HandleFunc("POST /api/admin/users", s.requireAdmin(s.handleCreateUser))
+	mux.HandleFunc("PATCH /api/admin/users/{id}", s.requireAdmin(s.handleUpdateUser))
+	mux.HandleFunc("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleDeleteUser))
+	mux.HandleFunc("GET /api/admin/sessions", s.requireAdmin(s.handleListSessions))
+	mux.HandleFunc("DELETE /api/admin/sessions/{token}", s.requireAdmin(s.handleRevokeSession))
+	// --- Anketa ---
+	mux.HandleFunc("GET /api/survey/questions", s.requireAuth(s.handleActiveQuestions))
+	mux.HandleFunc("POST /api/survey/responses", s.requireAuth(s.handleSaveResponse))
+	mux.HandleFunc("GET /api/survey/responses", s.requireAuth(s.handleListResponses))
+	mux.HandleFunc("GET /api/admin/survey/questions", s.requireAdmin(s.handleListQuestions))
+	mux.HandleFunc("POST /api/admin/survey/questions", s.requireAdmin(s.handleCreateQuestion))
+	mux.HandleFunc("PATCH /api/admin/survey/questions/{id}", s.requireAdmin(s.handleUpdateQuestion))
+	mux.HandleFunc("DELETE /api/admin/survey/questions/{id}", s.requireAdmin(s.handleDeleteQuestion))
+	// --- Admin (parol bilan himoyalangan) ---
+	mux.HandleFunc("POST /api/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("GET /api/admin/employees", s.requireAdmin(s.handleListEmployees))
+	mux.HandleFunc("POST /api/admin/employees", s.requireAdmin(s.handleAddEmployee))
+	mux.HandleFunc("GET /api/admin/employees/{id}", s.requireAdmin(s.handleEmployeeDetail))
+	mux.HandleFunc("PATCH /api/admin/employees/{id}", s.requireAdmin(s.handleUpdateEmployee))
+	mux.HandleFunc("GET /api/admin/servers", s.requireAdmin(s.handleListServers))
+	mux.HandleFunc("POST /api/admin/servers", s.requireAdmin(s.handleAddServer))
+	mux.HandleFunc("PATCH /api/admin/servers/{id}", s.requireAdmin(s.handleUpdateServer))
+	mux.HandleFunc("DELETE /api/admin/servers/{id}", s.requireAdmin(s.handleDeleteServer))
 	// statik UI (SPA fallback bilan) — barcha boshqa GET so'rovlar
 	mux.HandleFunc("GET /", s.handleStatic)
 	return s.cors(mux)
@@ -82,8 +117,8 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", originOrStar(origin, s.origins))
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Password")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -212,6 +247,16 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, users)
+}
+
+// /api/monitoring/hidden → yashiringan operator extension'lari (public)
+func (s *Server) handleHidden(w http.ResponseWriter, r *http.Request) {
+	exts, err := s.store.HiddenExts(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, exts)
 }
 
 // /api/monitoring/fifo → jonli navbatlar/operatorlar (OnlinePBX'dan to'g'ridan-to'g'ri)

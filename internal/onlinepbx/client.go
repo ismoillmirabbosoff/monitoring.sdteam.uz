@@ -114,12 +114,14 @@ func (c *Client) authenticate(ctx context.Context) (string, error) {
 	if c.keysURL != "" {
 		return c.authenticateUpstream(ctx)
 	}
-	if c.apiKey == "" || c.apiID == "" {
-		return "", fmt.Errorf("ONPBX_API_KEY/ONPBX_API_ID sozlanmagan — auth qilib bo'lmaydi")
+	if c.apiKey == "" {
+		return "", fmt.Errorf("ONPBX_API_KEY sozlanmagan — auth qilib bo'lmaydi")
 	}
 	form := url.Values{}
 	form.Set("auth_key", c.apiKey)
-	form.Set("auth_id", c.apiID)
+	if c.apiID != "" {
+		form.Set("auth_id", c.apiID)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint("auth.json"), strings.NewReader(form.Encode()))
 	if err != nil {
@@ -142,8 +144,10 @@ func (c *Client) authenticate(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("auth muvaffaqiyatsiz: status=%s comment=%s", ar.Status, ar.Comment)
 	}
 
-	token := ar.Data.Key + ":" + ar.Data.KeyID
-	wsKey := firstNonEmpty(ar.Data.AuthKey, ar.Data.WSKey)
+	// OnlinePBX token formati: "<key_id>:<key>"
+	token := ar.Data.KeyID + ":" + ar.Data.Key
+	// WebSocket kaliti: auth.json bermasa, API kalitning o'zi ishlatiladi.
+	wsKey := firstNonEmpty(ar.Data.AuthKey, ar.Data.WSKey, c.apiKey)
 
 	c.mu.Lock()
 	c.token = token

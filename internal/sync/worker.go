@@ -48,7 +48,30 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
+// syncOperators OnlinePBX operatorlarini employees jadvaliga ko'chiradi (ism+kompaniya).
+func (w *Worker) syncOperators(ctx context.Context) {
+	users, err := w.pbx.UserGet(ctx)
+	if err != nil {
+		log.Printf("sync: operatorlarni olishda xato: %v", err)
+		return
+	}
+	n := 0
+	for _, u := range users {
+		if u.Num == "" || u.Name == "" {
+			continue
+		}
+		company := onlinepbx.CompanyByQueue(u.Queue)
+		if err := w.store.UpsertOperator(ctx, u.Name, u.Num, company); err == nil {
+			n++
+		}
+	}
+	if n > 0 {
+		log.Printf("sync: %d ta operator employees'ga yangilandi", n)
+	}
+}
+
 func (w *Worker) syncOnce(ctx context.Context) {
+	w.syncOperators(ctx)
 	now := w.now().Unix()
 
 	// Boshlang'ich nuqta: oxirgi sinxdan beri (overlap bilan), aks holda lookback.

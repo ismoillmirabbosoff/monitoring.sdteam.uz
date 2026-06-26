@@ -26,24 +26,24 @@ const nowH = new Date().getHours()
   <svg :viewBox="`0 0 ${W} ${H}`" class="chart" preserveAspectRatio="none">
     <defs>
       <linearGradient id="barIn" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#7c5cff" stop-opacity="0.95" />
-        <stop offset="1" stop-color="#7c5cff" stop-opacity="0.35" />
+        <stop offset="0" stop-color="#6d5efc" stop-opacity="0.95" />
+        <stop offset="1" stop-color="#6d5efc" stop-opacity="0.35" />
       </linearGradient>
       <linearGradient id="barOut" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#22d3ee" stop-opacity="0.9" />
-        <stop offset="1" stop-color="#22d3ee" stop-opacity="0.3" />
+        <stop offset="0" stop-color="#14b8c4" stop-opacity="0.9" />
+        <stop offset="1" stop-color="#14b8c4" stop-opacity="0.3" />
       </linearGradient>
     </defs>
 
     <!-- grid -->
-    <g stroke="rgba(255,255,255,0.05)" stroke-width="1">
+    <g class="grid" stroke-width="1">
       <line v-for="g in 4" :key="g" :x1="PAD" :x2="W - PAD"
             :y1="PAD + ((H - PAD * 2) / 4) * g" :y2="PAD + ((H - PAD * 2) / 4) * g" />
     </g>
 
     <g v-for="d in hours" :key="d.h">
-      <rect v-if="d.h === nowH" :x="PAD + d.h * bw" :y="PAD" :width="bw" :height="H - PAD * 2"
-            fill="rgba(255,255,255,0.04)" rx="3" />
+      <rect v-if="d.h === nowH" class="now-col" :x="PAD + d.h * bw" :y="PAD" :width="bw" :height="H - PAD * 2"
+            rx="3" />
       <rect :x="PAD + d.h * bw + 3" :width="bw - 6"
             :y="y(d.in)" :height="Math.max(0, H - PAD - y(d.in))"
             fill="url(#barIn)" rx="3" />
@@ -59,6 +59,9 @@ const nowH = new Date().getHours()
 
 <style scoped>
 .chart { width: 100%; height: 220px; display: block; }
+.grid line { stroke: var(--border); }
+.now-col { fill: var(--surface-2); }
+.chart text { fill: var(--text-faint); }
 .chart rect[fill^="url"] {
   transform-box: fill-box;
   transform-origin: bottom;

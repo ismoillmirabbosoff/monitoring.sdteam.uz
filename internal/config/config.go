@@ -14,6 +14,15 @@ type Config struct {
 	CORSOrigins []string // ruxsat etilgan frontend domenlari
 	WebDir      string   // build qilingan UI papkasi (statik xizmat)
 	WSPort      string   // OnlinePBX websocket porti (frontend uchun)
+	AdminPass   string   // admin sahifa paroli (legacy bridge + bootstrap admin paroli)
+
+	// Auth bootstrap + email
+	AdminEmail string // boshlang'ich admin email
+	SMTPHost   string
+	SMTPPort   string
+	SMTPUser   string
+	SMTPPass   string
+	SMTPFrom   string
 
 	// OnlinePBX
 	OnpbxDomain  string // masalan "pbx12127.onpbx.ru"
@@ -41,6 +50,13 @@ func Load() (*Config, error) {
 		CORSOrigins:  splitCSV(getEnv("CORS_ORIGINS", "*")),
 		WebDir:       getEnv("WEB_DIR", "./web/dist"),
 		WSPort:       getEnv("ONPBX_WS_PORT", "3342"),
+		AdminPass:    getEnv("ADMIN_PASSWORD", "admin"),
+		AdminEmail:   getEnv("ADMIN_EMAIL", "fox@salesdoc.io"),
+		SMTPHost:     os.Getenv("SMTP_HOST"),
+		SMTPPort:     getEnv("SMTP_PORT", "587"),
+		SMTPUser:     os.Getenv("SMTP_USER"),
+		SMTPPass:     os.Getenv("SMTP_PASS"),
+		SMTPFrom:     os.Getenv("SMTP_FROM"),
 		OnpbxDomain:  os.Getenv("ONPBX_DOMAIN"),
 		OnpbxAPIKey:  os.Getenv("ONPBX_API_KEY"),
 		OnpbxAPIID:   os.Getenv("ONPBX_API_ID"),

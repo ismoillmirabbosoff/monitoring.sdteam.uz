@@ -14,11 +14,10 @@ const opList = computed(() =>
 )
 const maxOp = computed(() => Math.max(1, ...opList.value.map((o) => o.incoming + o.outgoing)))
 function nm(ext) { return props.names[ext] || `#${ext}` }
-function survPct(p) {
-  const s = props.stats?.surveys?.[p]
-  if (!s || !s[1]) return 0
-  return Math.round(s[0] / s[1] * 100)
+function surv(p) {
+  return props.stats?.surveys?.[p] || { filled: 0, unfilled: 0, total: 0, pct: 0 }
 }
+function survPct(p) { return Math.round(surv(p).pct || 0) }
 </script>
 
 <template>
@@ -36,7 +35,10 @@ function survPct(p) {
           <div class="r"><span class="r__l">{{ t('st.total') }}</span><span class="hi">{{ stats.incoming.today.total }}</span><span>{{ stats.incoming.week.total }}</span><span>{{ stats.incoming.month.total }}</span></div>
           <div class="r"><span class="r__l">{{ t('st.answered') }}</span><span class="hi"><b class="pill-ok">{{ stats.incoming.today.answered }}</b></span><span class="ok">{{ stats.incoming.week.answered }}</span><span class="ok">{{ stats.incoming.month.answered }}</span></div>
           <div class="r"><span class="r__l">{{ t('st.missed') }}</span><span class="hi"><b class="pill-bad">{{ stats.incoming.today.missed }}</b></span><span class="bad">{{ stats.incoming.week.missed }}</span><span class="bad">{{ stats.incoming.month.missed }}</span></div>
-          <div class="r"><span class="r__l">{{ t('st.surveys') }}</span><span class="hi">{{ survPct('today') }}%</span><span>{{ survPct('week') }}%</span><span>{{ survPct('month') }}%</span></div>
+          <div class="r"><span class="r__l">{{ t('st.surveys') }}</span>
+            <span class="hi surv"><b>{{ survPct('today') }}%</b><i class="mono">{{ surv('today').filled }}/{{ surv('today').total }}</i></span>
+            <span class="surv"><b>{{ survPct('week') }}%</b><i class="mono">{{ surv('week').filled }}/{{ surv('week').total }}</i></span>
+            <span class="surv"><b>{{ survPct('month') }}%</b><i class="mono">{{ surv('month').filled }}/{{ surv('month').total }}</i></span></div>
           <div class="r"><span class="r__l">{{ t('st.avgTalk') }}</span><span class="hi mono">{{ fmtDuration(stats.incoming.today.avg) }}</span><span class="mono dim">{{ fmtDuration(stats.incoming.week.avg) }}</span><span class="mono dim">{{ fmtDuration(stats.incoming.month.avg) }}</span></div>
           <div class="r"><span class="r__l">{{ t('st.totalTalk') }}</span><span class="hi mono">{{ fmtDuration(stats.incoming.today.talk) }}</span><span class="mono dim">{{ fmtDuration(stats.incoming.week.talk) }}</span><span class="mono dim">{{ fmtDuration(stats.incoming.month.talk) }}</span></div>
         </div>
@@ -118,6 +120,8 @@ function survPct(p) {
 .r .ok { color: var(--green); }
 .r .bad { color: var(--red); }
 .dim { color: var(--text-faint); }
+.surv { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.surv i { font-size: 10.5px; color: var(--text-faint); font-style: normal; }
 
 .ops { padding: 22px 24px; }
 .ops__head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }

@@ -76,10 +76,20 @@ const rangeLabel = computed(() => {
   return `${fmt(f)} — ${fmt(t)}`
 })
 
+// Qo'ng'iroq kompaniyasi: avval gateway (712*/781*), aks holda operator ext bo'yicha
+// (kiruvchi qo'ng'iroqlarda gateway kompaniyani ko'rsatmasligi mumkin).
+function callCompany(c) {
+  const g = companyForGateway(c.gateway)
+  if (g) return g
+  const ext = c.direction === 'outbound' ? c.caller_id_number : c.destination_number
+  if (isExtension(ext)) return userCompany.value[String(ext)] || ''
+  return ''
+}
+
 // Tanlangan kompaniya bo'yicha filtrlangan qo'ng'iroqlar
 const calls = computed(() => {
   if (!company.value) return allCalls.value
-  return allCalls.value.filter((c) => companyForGateway(c.gateway) === company.value)
+  return allCalls.value.filter((c) => callCompany(c) === company.value)
 })
 
 const kpi = computed(() => {

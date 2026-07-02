@@ -7,6 +7,7 @@ const fifoOnline = ref({})    // ext -> online bool
 const names = ref({})         // ext -> ism
 const compMap = ref({})       // ext -> kompaniya
 const live = ref({})          // ext -> 'talking'|'ringing'|'dnd'
+const opStats = ref({})       // ext -> {incoming, outgoing, survey_unfilled, servers}
 const hidden = ref(new Set())
 const company = ref('')
 const now = ref(new Date())
@@ -37,7 +38,17 @@ const operators = computed(() => {
     .map((ext) => {
       let status = fifoOnline.value[ext] ? 'online' : 'offline'
       if (live.value[ext]) status = live.value[ext]
-      return { ext, name: names.value[ext] || `Operator ${ext}`, company: compMap.value[ext] || '', status }
+      const st = opStats.value[ext] || {}
+      return {
+        ext,
+        name: names.value[ext] || `Operator ${ext}`,
+        company: compMap.value[ext] || '',
+        status,
+        incoming: st.incoming || 0,
+        outgoing: st.outgoing || 0,
+        unfilled: st.survey_unfilled || 0,
+        servers: st.servers || 0,
+      }
     })
   if (company.value) list = list.filter((o) => o.company === company.value)
   const rank = { talking: 0, ringing: 1, dnd: 2, online: 3, offline: 4 }
@@ -82,7 +93,15 @@ async function loadUsers() {
 async function loadHidden() {
   try { hidden.value = new Set((await api.hidden()) || []) } catch {}
 }
-async function refresh() { await Promise.all([loadFifo(), loadUsers(), loadHidden()]) }
+async function loadStats() {
+  try {
+    const s = await api.stats()
+    const map = {}
+    for (const o of s.operators || []) map[String(o.ext)] = o
+    opStats.value = map
+  } catch {}
+}
+async function refresh() { await Promise.all([loadFifo(), loadUsers(), loadHidden(), loadStats()]) }
 
 async function initWS() {
   try {
@@ -179,6 +198,24 @@ onUnmounted(() => {
           </div>
           <div class="item__name">{{ op.name }}</div>
           <div class="item__st">{{ t(STATUS[op.status].key) }}</div>
+          <div class="item__metrics">
+            <div class="m m--in" :title="t('st.inCalls')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17M7 17h8M7 17V9"/></svg>
+              <span>{{ op.incoming }}</span>
+            </div>
+            <div class="m m--out" :title="t('st.outCalls')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 7H9M17 7v8"/></svg>
+              <span>{{ op.outgoing }}</span>
+            </div>
+            <div class="m m--surv" :class="{ warn: op.unfilled > 0 }" :title="t('tv.unfilled')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+              <span>{{ op.unfilled }}</span>
+            </div>
+            <div class="m m--srv" :title="t('tv.servers')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+              <span>{{ op.servers }}</span>
+            </div>
+          </div>
         </div>
       </TransitionGroup>
       <div v-if="!operators.length" class="tv__empty">—</div>
@@ -230,6 +267,16 @@ onUnmounted(() => {
 .item__name { font-size: 17px; font-weight: 600; color: var(--text); margin-top: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item__st { font-size: 11.5px; color: var(--c); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px; font-weight: 600; }
+.item__metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid var(--border); }
+.m { display: flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 14px; font-weight: 700; color: var(--text); font-family: var(--mono); }
+.m svg { width: 15px; height: 15px; flex-shrink: 0; }
+.m--in { color: var(--green, #10b981); }
+.m--out { color: var(--accent-2, #14b8c4); }
+.m--surv { color: var(--text-faint); }
+.m--surv.warn { color: #f59e0b; }
+.m--srv { color: var(--text-dim); }
 .s-offline { opacity: 0.7; }
 .s-offline .item__name { color: var(--text-dim); }
 .s-talking .item__dot, .s-ringing .item__dot, .s-online .item__dot { animation: pulse-dot 1.8s infinite; }

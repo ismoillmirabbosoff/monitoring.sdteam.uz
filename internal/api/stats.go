@@ -6,11 +6,27 @@ import (
 	"time"
 
 	"github.com/salesdoc/monitoring-api/internal/onlinepbx"
+	"github.com/salesdoc/monitoring-api/internal/store"
 )
 
 var extRe = regexp.MustCompile(`^[1-4][0-9]{2,3}$`)
 
 func isExt(s string) bool { return extRe.MatchString(s) }
+
+// operatorExt qo'ng'iroqning operator extension'ini qaytaradi
+// (chiquvchi → qo'ng'iroq qiluvchi, kiruvchi → manzil), aks holda "".
+func operatorExt(c store.CallRow) string {
+	if c.Direction == "outbound" {
+		if isExt(c.CallerIDNumber) {
+			return c.CallerIDNumber
+		}
+		return ""
+	}
+	if isExt(c.DestinationNumber) {
+		return c.DestinationNumber
+	}
+	return ""
+}
 
 type Period struct {
 	Total    int   `json:"total"`
@@ -35,15 +51,40 @@ func (p *Period) finish() {
 	}
 }
 
+// SurveyStat anketa qoplanishi: javob berilgan (suhbatli) qo'ng'iroqlar bo'yicha.
+type SurveyStat struct {
+	Filled   int     `json:"filled"`   // anketa to'ldirilgan qo'ng'iroqlar
+	Unfilled int     `json:"unfilled"` // anketa to'ldirilmagan qo'ng'iroqlar
+	Total    int     `json:"total"`    // javob berilgan qo'ng'iroqlar (filled + unfilled)
+	Pct      float64 `json:"pct"`      // filled / total * 100
+}
+
+func (s *SurveyStat) add(filled bool) {
+	s.Total++
+	if filled {
+		s.Filled++
+	} else {
+		s.Unfilled++
+	}
+}
+func (s *SurveyStat) finish() {
+	if s.Total > 0 {
+		s.Pct = float64(s.Filled) / float64(s.Total) * 100
+	}
+}
+
 type opStat struct {
-	Ext      string `json:"ext"`
-	Incoming int    `json:"incoming"`
-	IncTime  int64  `json:"incoming_time"`
-	Outgoing int    `json:"outgoing"`
-	OutTime  int64  `json:"outgoing_time"`
-	Total    int64  `json:"total_time"`
-	Missed   int    `json:"missed"`
-	Pct      float64 `json:"pct"`
+	Ext            string  `json:"ext"`
+	Incoming       int     `json:"incoming"`
+	IncTime        int64   `json:"incoming_time"`
+	Outgoing       int     `json:"outgoing"`
+	OutTime        int64   `json:"outgoing_time"`
+	Total          int64   `json:"total_time"`
+	Missed         int     `json:"missed"`
+	SurveyFilled   int     `json:"survey_filled"`   // to'ldirilgan anketa (bugun)
+	SurveyUnfilled int     `json:"survey_unfilled"` // to'ldirilmagan anketa (bugun)
+	Servers        int     `json:"servers"`         // biriktirilgan serverlar soni
+	Pct            float64 `json:"pct"`
 }
 
 // GET /api/monitoring/stats?company=salesdoc|ibox
@@ -65,15 +106,24 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	for _, x := range resp {
 		respByCall[x.CallUUID] = true
 	}
+	// Kompaniyani aniqlash uchun ext→kompaniya (kiruvchi gateway fallback) va server sonlari.
+	extCompany, _ := s.store.ExtCompanyMap(r.Context())
+	serverCount, _ := s.store.ServerCountByExt(r.Context())
 
 	var incToday, incWeek, incMonth Period
 	var outToday, outWeek, outMonth Period
-	var survToday, survWeek, survMonth [2]int // [filled, answeredTotal]
+	var survToday, survWeek, survMonth SurveyStat
 	ops := map[string]*opStat{}
 	grandTotal := 0
 
 	for _, c := range calls {
-		if company != "" && onlinepbx.CompanyByGateway(c.Gateway) != company {
+		ext := operatorExt(c)
+		// Kompaniya: avval gateway, keyin operator ext bo'yicha (kiruvchi qo'ng'iroqlar uchun).
+		comp := onlinepbx.CompanyByGateway(c.Gateway)
+		if comp == "" && ext != "" {
+			comp = extCompany[ext]
+		}
+		if company != "" && comp != company {
 			continue
 		}
 		answered := c.UserTalkTime > 0
@@ -101,71 +151,65 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		// anketa qoplanishi (javob berilgan qo'ng'iroqlar bo'yicha)
 		if answered {
 			filled := respByCall[c.UUID]
-			survMonth[1]++
-			if filled {
-				survMonth[0]++
-			}
+			survMonth.add(filled)
 			if inWeek {
-				survWeek[1]++
-				if filled {
-					survWeek[0]++
-				}
+				survWeek.add(filled)
 			}
 			if inToday {
-				survToday[1]++
-				if filled {
-					survToday[0]++
-				}
+				survToday.add(filled)
 			}
 		}
 
 		// operator jadvali (bugun)
-		if inToday {
-			ext := ""
+		if inToday && ext != "" {
+			o := ops[ext]
+			if o == nil {
+				o = &opStat{Ext: ext}
+				ops[ext] = o
+			}
 			if c.Direction == "outbound" {
-				if isExt(c.CallerIDNumber) {
-					ext = c.CallerIDNumber
+				o.Outgoing++
+				o.OutTime += c.UserTalkTime
+			} else {
+				o.Incoming++
+				o.IncTime += c.UserTalkTime
+				if !answered {
+					o.Missed++
 				}
-			} else if isExt(c.DestinationNumber) {
-				ext = c.DestinationNumber
 			}
-			if ext != "" {
-				o := ops[ext]
-				if o == nil {
-					o = &opStat{Ext: ext}
-					ops[ext] = o
-				}
-				if c.Direction == "outbound" {
-					o.Outgoing++
-					o.OutTime += c.UserTalkTime
+			o.Total += c.UserTalkTime
+			// anketa: faqat javob berilgan (suhbatli) qo'ng'iroqlar hisobga olinadi
+			if answered {
+				if respByCall[c.UUID] {
+					o.SurveyFilled++
 				} else {
-					o.Incoming++
-					o.IncTime += c.UserTalkTime
-					if !answered {
-						o.Missed++
-					}
+					o.SurveyUnfilled++
 				}
-				o.Total += c.UserTalkTime
-				grandTotal++
 			}
+			grandTotal++
 		}
 	}
 
 	for _, p := range []*Period{&incToday, &incWeek, &incMonth, &outToday, &outWeek, &outMonth} {
 		p.finish()
 	}
+	survToday.finish()
+	survWeek.finish()
+	survMonth.finish()
+
 	opList := make([]opStat, 0, len(ops))
 	for _, o := range ops {
 		if grandTotal > 0 {
 			o.Pct = float64(o.Incoming+o.Outgoing) / float64(grandTotal) * 100
 		}
+		o.Servers = serverCount[o.Ext]
 		opList = append(opList, *o)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"incoming": map[string]Period{"today": incToday, "week": incWeek, "month": incMonth},
-		"outgoing": map[string]Period{"today": outToday, "week": outWeek, "month": outMonth},
-		"surveys": map[string][2]int{"today": survToday, "week": survWeek, "month": survMonth},
+		"incoming":  map[string]Period{"today": incToday, "week": incWeek, "month": incMonth},
+		"outgoing":  map[string]Period{"today": outToday, "week": outWeek, "month": outMonth},
+		"surveys":   map[string]SurveyStat{"today": survToday, "week": survWeek, "month": survMonth},
 		"operators": opList,
 	})
 }

@@ -80,6 +80,51 @@ func (s *Store) SetEmployeeHidden(ctx context.Context, id int, hidden bool) erro
 	return err
 }
 
+// ExtCompanyMap operator extension → kompaniya (employees jadvalidan).
+// Kiruvchi qo'ng'iroqlarning gateway'i kompaniyani ko'rsatmaganda fallback sifatida ishlatiladi.
+func (s *Store) ExtCompanyMap(ctx context.Context) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ext, company FROM employees
+		WHERE ext IS NOT NULL AND ext <> '' AND company <> ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var ext, company string
+		if err := rows.Scan(&ext, &company); err != nil {
+			return nil, err
+		}
+		out[ext] = company
+	}
+	return out, rows.Err()
+}
+
+// ServerCountByExt operator extension → biriktirilgan serverlar soni.
+func (s *Store) ServerCountByExt(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.ext, COUNT(sv.id)
+		FROM employees e
+		JOIN servers sv ON sv.employee_id = e.id
+		WHERE e.ext IS NOT NULL AND e.ext <> ''
+		GROUP BY e.ext`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var ext string
+		var n int
+		if err := rows.Scan(&ext, &n); err != nil {
+			return nil, err
+		}
+		out[ext] = n
+	}
+	return out, rows.Err()
+}
+
 // HiddenExts yashiringan operatorlarning extension'lari (public dashboard uchun).
 func (s *Store) HiddenExts(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT ext FROM employees WHERE hidden = true AND ext IS NOT NULL AND ext <> ''`)

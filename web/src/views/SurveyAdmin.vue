@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { api, isExtension, todayStr } from '../api.js'
+import { api, isExtension, todayStr, fmtDuration, fmtTime } from '../api.js'
 
 const tab = ref('report')
 const day = ref(todayStr())
@@ -9,6 +9,7 @@ const responses = ref(new Set())
 const names = ref({})
 const loading = ref(true)
 const msg = ref('')
+const expanded = ref(null)   // ochilgan operator ext (drill-down)
 
 // savollar
 const questions = ref([])
@@ -60,6 +61,14 @@ const byOperator = computed(() => {
   return Object.values(m).filter((o) => o.missing > 0).sort((a, b) => b.missing - a.missing)
 })
 
+// Bitta operatorning anketasiz qo'ng'iroqlari (drill-down)
+function opUnfilled(ext) {
+  return calls.value
+    .filter((c) => opExt(c) === ext && !responses.value.has(c.uuid))
+    .sort((a, b) => b.start_stamp - a.start_stamp)
+}
+function toggleOp(ext) { expanded.value = expanded.value === ext ? null : ext }
+
 async function addQuestion() {
   if (!nf.value.label.trim()) { flash('Savol matni kerak'); return }
   try {
@@ -103,14 +112,29 @@ onMounted(() => { loadReport(); loadQuestions() })
       <h2 class="sub">Kim ko'p to'ldirmaydi</h2>
       <div v-if="loading" class="loading"><i class="spin"></i></div>
       <div v-else class="ops card">
-        <div v-for="o in byOperator" :key="o.ext" class="op">
-          <div class="op__av">{{ (names[o.ext] || o.ext).slice(0,2).toUpperCase() }}</div>
-          <div class="op__info">
-            <div class="op__name">{{ names[o.ext] || ('Operator ' + o.ext) }}</div>
-            <div class="op__ext mono">#{{ o.ext }}</div>
+        <div v-for="o in byOperator" :key="o.ext" class="opwrap">
+          <div class="op" :class="{ open: expanded === o.ext }" @click="toggleOp(o.ext)">
+            <div class="op__av">{{ (names[o.ext] || o.ext).slice(0,2).toUpperCase() }}</div>
+            <div class="op__info">
+              <div class="op__name">{{ names[o.ext] || ('Operator ' + o.ext) }}</div>
+              <div class="op__ext mono">#{{ o.ext }}</div>
+            </div>
+            <div class="op__bar"><div class="op__fill" :style="{ width: (o.missing/o.total*100)+'%' }"></div></div>
+            <div class="op__cnt"><b>{{ o.missing }}</b> / {{ o.total }}</div>
+            <svg class="op__caret" :class="{ rot: expanded === o.ext }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
           </div>
-          <div class="op__bar"><div class="op__fill" :style="{ width: (o.missing/o.total*100)+'%' }"></div></div>
-          <div class="op__cnt"><b>{{ o.missing }}</b> / {{ o.total }}</div>
+          <div v-if="expanded === o.ext" class="drill">
+            <div class="drill__head">Anketasiz qo'ng'iroqlar ({{ opUnfilled(o.ext).length }})</div>
+            <div v-for="c in opUnfilled(o.ext)" :key="c.uuid" class="drow">
+              <span class="drow__dir" :class="c.direction === 'outbound' ? 'out' : 'in'">
+                <svg v-if="c.direction === 'outbound'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 7H9M17 7v8"/></svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17M7 17h8M7 17V9"/></svg>
+              </span>
+              <span class="drow__num mono">{{ c.caller_id_number }} → {{ c.destination_number }}</span>
+              <span class="drow__meta mono">{{ fmtTime(c.start_stamp) }} · {{ fmtDuration(c.user_talk_time) }}</span>
+            </div>
+            <div v-if="!opUnfilled(o.ext).length" class="drill__empty">Bu operatorda anketasiz qo'ng'iroq yo'q 🎉</div>
+          </div>
         </div>
         <div v-if="!byOperator.length" class="empty">Hammasi to'ldirilgan 🎉</div>
       </div>
@@ -159,8 +183,24 @@ onMounted(() => { loadReport(); loadQuestions() })
 .kpi__l { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; }
 .sub { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
 .ops { padding: 8px 14px; }
-.op { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-top: 1px solid var(--border); }
-.op:first-child { border-top: none; }
+.opwrap { border-top: 1px solid var(--border); }
+.opwrap:first-child { border-top: none; }
+.op { display: flex; align-items: center; gap: 14px; padding: 12px 4px; cursor: pointer; border-radius: 10px; transition: background 0.15s; }
+.op:hover { background: var(--surface-2); }
+.op.open { background: var(--surface-2); }
+.op__caret { width: 18px; height: 18px; color: var(--text-faint); flex-shrink: 0; transition: transform 0.2s; }
+.op__caret.rot { transform: rotate(180deg); color: var(--accent); }
+.drill { padding: 6px 4px 14px 52px; animation: fade-up 0.25s both; }
+.drill__head { font-size: 11.5px; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 10px; }
+.drow { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 9px; }
+.drow:hover { background: var(--surface); }
+.drow__dir { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+.drow__dir svg { width: 13px; height: 13px; }
+.drow__dir.in { background: rgba(16,185,129,0.14); color: var(--green); }
+.drow__dir.out { background: rgba(20,184,196,0.14); color: var(--accent-2); }
+.drow__num { font-size: 13px; font-weight: 600; }
+.drow__meta { font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
+.drill__empty { color: var(--text-faint); font-size: 12.5px; padding: 10px; }
 .op__av { width: 38px; height: 38px; border-radius: 11px; background: var(--grad-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .op__info { width: 180px; }
 .op__name { font-size: 13.5px; font-weight: 600; }

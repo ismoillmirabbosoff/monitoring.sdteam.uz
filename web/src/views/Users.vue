@@ -1,12 +1,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { api } from '../api.js'
+import { api, COMPANIES, companyForQueue } from '../api.js'
 import { auth } from '../auth.js'
 
 const users = ref([])
 const operators = ref([])
 const hidden = ref(new Set())   // yashiringan operator ext'lari
 const search = ref('')
+const company = ref('')          // '' | 'salesdoc' | 'ibox'
+const companies = COMPANIES
 const msg = ref('')
 const showForm = ref(false)
 const nf = ref({ email: '', password: '', name: '', role: 'operator', ext: '' })
@@ -23,13 +25,23 @@ async function load() {
   } catch (e) { flash('Xato: ' + e.message) }
 }
 
+// ext -> kompaniya (OnlinePBX operatorlarining tr1 navbatidan)
+const extCompany = computed(() => {
+  const m = {}
+  for (const o of operators.value) if (o.num) m[String(o.num)] = companyForQueue(o.tr1)
+  return m
+})
+function userCompany(u) { return u.ext ? (extCompany.value[String(u.ext)] || '') : '' }
+
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return users.value
-  return users.value.filter((u) =>
+  let list = users.value
+  if (company.value) list = list.filter((u) => userCompany(u) === company.value)
+  if (q) list = list.filter((u) =>
     (u.name || '').toLowerCase().includes(q) ||
     (u.email || '').toLowerCase().includes(q) ||
     String(u.ext || '').includes(q))
+  return list
 })
 
 function isHidden(u) { return !!u.ext && hidden.value.has(String(u.ext)) }
@@ -89,6 +101,13 @@ onMounted(load)
         <p>{{ users.length }} ta · login qila oladiganlar</p>
       </div>
       <div class="top__actions">
+        <div class="cfilter">
+          <button v-for="c in companies" :key="c.id" class="cfilter__btn"
+                  :class="{ active: company === c.id }" @click="company = c.id"
+                  :style="company === c.id ? { '--c': c.color } : {}">
+            <i v-if="c.id" :style="{ background: c.color }"></i>{{ c.id ? c.name : 'Hammasi' }}
+          </button>
+        </div>
         <input v-model="search" class="search" placeholder="🔍 Ism, email yoki ext bo'yicha qidirish…" />
         <button @click="showForm = !showForm">{{ showForm ? 'Yopish' : '+ Yangi hodim' }}</button>
       </div>
@@ -175,8 +194,14 @@ onMounted(load)
 .top { display: flex; justify-content: space-between; align-items: flex-start; margin: 16px 0 20px; }
 .top h1 { font-size: 24px; font-weight: 800; }
 .top p { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
-.top__actions { display: flex; gap: 10px; align-items: center; }
+.top__actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .search { width: 280px; max-width: 40vw; padding: 9px 13px; font-size: 13px; }
+.cfilter { display: flex; gap: 4px; background: var(--surface); padding: 5px; border-radius: 12px; border: 1px solid var(--border); }
+.cfilter__btn { display: flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 9px;
+  font-size: 12.5px; font-weight: 600; background: transparent; border: none; color: var(--text-dim); }
+.cfilter__btn i { width: 8px; height: 8px; border-radius: 50%; }
+.cfilter__btn:hover { color: var(--text); transform: none; box-shadow: none; }
+.cfilter__btn.active { background: var(--surface-2); color: var(--text); }
 .toast { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); z-index: 50;
   background: var(--grad); color: #fff; padding: 11px 22px; border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: var(--glow); }
 .cform { display: grid; grid-template-columns: repeat(5, 1fr) auto; gap: 14px; align-items: end; padding: 18px; margin-bottom: 18px; }

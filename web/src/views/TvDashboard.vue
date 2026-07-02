@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { api, parseFifoUsers, isExtension, companyForQueue, companyName, COMPANIES } from '../api.js'
+import { api, parseFifoUsers, isExtension, companyForQueue, companyName, COMPANIES, wsUrl } from '../api.js'
 import { t } from '../i18n.js'
 
 const fifoOnline = ref({})    // ext -> online bool
@@ -106,8 +106,8 @@ async function refresh() { await Promise.all([loadFifo(), loadUsers(), loadHidde
 async function initWS() {
   try {
     const [cfg, keys] = await Promise.all([api.config(), api.keys()])
-    if (!cfg.domain || !keys.auth_key) { wsState.value = 'offline'; return }
-    ws = new WebSocket(`wss://${cfg.domain}:${cfg.wsPort || 3342}/?key=${keys.auth_key}`)
+    if (!keys.auth_key) { wsState.value = 'offline'; return }
+    ws = new WebSocket(wsUrl(cfg, keys.auth_key))
     ws.onopen = () => {
       wsState.value = 'live'
       ws.send(JSON.stringify({ command: 'subscribe', reqId: 'tv-' + Date.now(),
@@ -202,11 +202,11 @@ onUnmounted(() => {
           <div class="item__st">{{ t(STATUS[op.status].key) }}</div>
           <div class="item__metrics">
             <div class="m m--in" :title="t('st.inCalls')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17M7 17h8M7 17V9"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 2 16 8 22 8"/><line x1="22" y1="2" x2="16" y2="8"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <span>{{ op.incoming }}</span>
             </div>
             <div class="m m--out" :title="t('st.outCalls')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M17 7H9M17 7v8"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 8 22 2 16 2"/><line x1="16" y1="8" x2="22" y2="2"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <span>{{ op.outgoing }}</span>
             </div>
             <div class="m m--surv" :class="{ warn: op.unfilled > 0 }" :title="t('tv.unfilled')">

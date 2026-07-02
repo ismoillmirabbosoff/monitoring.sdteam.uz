@@ -7,7 +7,7 @@ import CallsFeed from '../components/CallsFeed.vue'
 import StatsBlock from '../components/StatsBlock.vue'
 import {
   api, todayStr, parseFifoUsers, isExtension, fmtDuration,
-  COMPANIES, companyForGateway, companyForQueue,
+  COMPANIES, companyForGateway, companyForQueue, wsUrl,
 } from '../api.js'
 import { t } from '../i18n.js'
 
@@ -198,8 +198,8 @@ async function refresh() {
 async function initWS() {
   try {
     const [cfg, keys] = await Promise.all([api.config(), api.keys()])
-    if (!cfg.domain || !keys.auth_key) { wsState.value = 'polling'; return }
-    ws = new WebSocket(`wss://${cfg.domain}:${cfg.wsPort || 3342}/?key=${keys.auth_key}`)
+    if (!keys.auth_key) { wsState.value = 'polling'; return }
+    ws = new WebSocket(wsUrl(cfg, keys.auth_key))
     ws.onopen = () => {
       wsState.value = 'live'
       ws.send(JSON.stringify({

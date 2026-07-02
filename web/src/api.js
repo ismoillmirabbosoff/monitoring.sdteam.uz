@@ -79,6 +79,16 @@ export const api = {
   deleteServer: (id) => adminReq('DELETE', `/api/admin/servers/${id}`),
 }
 
+// OnlinePBX WebSocket manzili.
+//   - production (https, nginx orqasida): same-origin /onpbx-ws/ proxy orqali (443 port)
+//   - dev (http localhost): to'g'ridan-to'g'ri OnlinePBX :3342 ga
+export function wsUrl(cfg, key) {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return `wss://${window.location.host}/onpbx-ws/?key=${key}`
+  }
+  return `wss://${cfg.domain}:${cfg.wsPort || 3342}/?key=${key}`
+}
+
 // --- Kompaniya (Salesdoc / Ibox) ---
 export const COMPANIES = [
   { id: '', name: 'Hammasi', color: 'var(--accent)' },

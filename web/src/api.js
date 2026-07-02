@@ -72,6 +72,7 @@ export const api = {
   addEmployee: (name, company) => adminReq('POST', '/api/admin/employees', { name, company }),
   employee: (id) => adminReq('GET', `/api/admin/employees/${id}`),
   updateEmployee: (id, payload) => adminReq('PATCH', `/api/admin/employees/${id}`, payload),
+  setHiddenByExt: (ext, hidden) => adminReq('PATCH', `/api/admin/employees/by-ext/${ext}`, { hidden }),
   servers: () => adminReq('GET', '/api/admin/servers'),
   addServer: (payload) => adminReq('POST', '/api/admin/servers', payload),
   updateServer: (id, payload) => adminReq('PATCH', `/api/admin/servers/${id}`, payload),

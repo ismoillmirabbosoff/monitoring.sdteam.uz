@@ -115,6 +115,27 @@ func (s *Server) handleUpdateEmployee(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, emp)
 }
 
+// handleSetHiddenByExt operatorni extension bo'yicha yashiradi/ko'rsatadi (Hodimlar bo'limi).
+func (s *Server) handleSetHiddenByExt(w http.ResponseWriter, r *http.Request) {
+	ext := r.PathValue("ext")
+	if ext == "" {
+		writeErr(w, http.StatusBadRequest, "ext kerak")
+		return
+	}
+	var body struct {
+		Hidden *bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Hidden == nil {
+		writeErr(w, http.StatusBadRequest, "hidden kerak")
+		return
+	}
+	if err := s.store.SetHiddenByExt(r.Context(), ext, *body.Hidden); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ext": ext, "hidden": *body.Hidden})
+}
+
 // --- Servers ---
 
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {

@@ -11,44 +11,52 @@ import (
 var ErrNotFound = errors.New("topilmadi")
 
 type User struct {
-	ID           int       `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	Name         string    `json:"name"`
-	Role         string    `json:"role"`
-	Ext          string    `json:"ext"`
-	Active       bool      `json:"active"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID              int       `json:"id"`
+	Email           string    `json:"email"`
+	PasswordHash    string    `json:"-"`
+	Name            string    `json:"name"`
+	Role            string    `json:"role"`
+	Ext             string    `json:"ext"`
+	Active          bool      `json:"active"`
+	InitialPassword string    `json:"initial_password"` // admin ko'rishi uchun ochiq parol
+	CreatedAt       time.Time `json:"created_at"`
 }
 
-func (s *Store) CreateUser(ctx context.Context, email, hash, name, role, ext string) (User, error) {
+// CreateUser yangi foydalanuvchi yaratadi. plainPassword — admin ko'rishi uchun ochiq
+// saqlanadi (initial_password); bo'sh bo'lsa saqlanmaydi.
+func (s *Store) CreateUser(ctx context.Context, email, hash, name, role, ext, plainPassword string) (User, error) {
 	var u User
 	var extVal *string
 	if ext != "" {
 		extVal = &ext
 	}
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, name, role, ext)
-		VALUES ($1,$2,$3,$4,$5)
-		RETURNING id, email, password_hash, name, role, COALESCE(ext,''), active, created_at`,
-		email, hash, name, role, extVal).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Role, &u.Ext, &u.Active, &u.CreatedAt)
+		INSERT INTO users (email, password_hash, name, role, ext, initial_password)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		RETURNING `+userCols,
+		email, hash, name, role, extVal, plainPassword).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Role, &u.Ext, &u.Active, &u.InitialPassword, &u.CreatedAt)
 	return u, err
 }
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Role, &u.Ext, &u.Active, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Role, &u.Ext, &u.Active, &u.InitialPassword, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return u, ErrNotFound
 	}
 	return u, err
 }
 
-const userCols = `id, email, password_hash, name, role, COALESCE(ext,''), active, created_at`
+const userCols = `id, email, password_hash, name, role, COALESCE(ext,''), active, COALESCE(initial_password,''), created_at`
 
 func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE lower(email) = lower($1)`, email))
+}
+
+// UserByExt operator extension bo'yicha foydalanuvchini qaytaradi (ext+parol login uchun).
+func (s *Store) UserByExt(ctx context.Context, ext string) (User, error) {
+	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE ext = $1 LIMIT 1`, ext))
 }
 
 func (s *Store) UserByID(ctx context.Context, id int) (User, error) {
@@ -79,7 +87,8 @@ func (s *Store) CountAdmins(ctx context.Context) (int, error) {
 }
 
 // UpdateUser nil bo'lmagan maydonlarni yangilaydi.
-func (s *Store) UpdateUser(ctx context.Context, id int, name, role, ext *string, active *bool, passwordHash *string) (User, error) {
+// plainPassword nil bo'lmasa initial_password ham yangilanadi (admin ko'rishi uchun).
+func (s *Store) UpdateUser(ctx context.Context, id int, name, role, ext *string, active *bool, passwordHash, plainPassword *string) (User, error) {
 	if name != nil {
 		s.pool.Exec(ctx, `UPDATE users SET name=$1 WHERE id=$2`, *name, id)
 	}
@@ -98,6 +107,9 @@ func (s *Store) UpdateUser(ctx context.Context, id int, name, role, ext *string,
 	}
 	if passwordHash != nil {
 		s.pool.Exec(ctx, `UPDATE users SET password_hash=$1 WHERE id=$2`, *passwordHash, id)
+	}
+	if plainPassword != nil {
+		s.pool.Exec(ctx, `UPDATE users SET initial_password=$1 WHERE id=$2`, *plainPassword, id)
 	}
 	return s.UserByID(ctx, id)
 }

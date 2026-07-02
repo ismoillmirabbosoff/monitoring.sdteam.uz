@@ -101,10 +101,10 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	resp, _ := s.store.ResponsesInRange(r.Context(), monthStart.Unix(), now.Unix())
-	respByCall := map[string]bool{}
-	for _, x := range resp {
-		respByCall[x.CallUUID] = true
+	// Anketa to'ldirilgan qo'ng'iroqlar (qo'ng'iroq vaqti bo'yicha, javob created_at emas).
+	respByCall, _ := s.store.FilledCallUUIDs(r.Context(), monthStart.Unix(), now.Unix())
+	if respByCall == nil {
+		respByCall = map[string]bool{}
 	}
 	// Kompaniyani aniqlash uchun ext→kompaniya (kiruvchi gateway fallback) va server sonlari.
 	extCompany, _ := s.store.ExtCompanyMap(r.Context())

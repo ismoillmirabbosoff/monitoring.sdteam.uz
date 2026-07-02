@@ -51,7 +51,7 @@ func main() {
 	// Boshlang'ich admin (agar admin yo'q bo'lsa)
 	if n, err := st.CountAdmins(ctx); err == nil && n == 0 {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(cfg.AdminPass), bcrypt.DefaultCost)
-		if _, err := st.CreateUser(ctx, cfg.AdminEmail, string(hash), "Administrator", "admin", ""); err != nil {
+		if _, err := st.CreateUser(ctx, cfg.AdminEmail, string(hash), "Administrator", "admin", "", ""); err != nil {
 			log.Printf("bootstrap admin xatosi: %v", err)
 		} else {
 			log.Printf("boshlang'ich admin yaratildi: %s (parol: ADMIN_PASSWORD)", cfg.AdminEmail)

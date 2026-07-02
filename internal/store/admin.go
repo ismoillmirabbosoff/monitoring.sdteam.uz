@@ -125,6 +125,12 @@ func (s *Store) ServerCountByExt(ctx context.Context) (map[string]int, error) {
 	return out, rows.Err()
 }
 
+// SetHiddenByExt operatorni extension bo'yicha yashiradi/ko'rsatadi (Hodimlar bo'limidan).
+func (s *Store) SetHiddenByExt(ctx context.Context, ext string, hidden bool) error {
+	_, err := s.pool.Exec(ctx, `UPDATE employees SET hidden = $1 WHERE ext = $2`, hidden, ext)
+	return err
+}
+
 // HiddenExts yashiringan operatorlarning extension'lari (public dashboard uchun).
 func (s *Store) HiddenExts(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT ext FROM employees WHERE hidden = true AND ext IS NOT NULL AND ext <> ''`)

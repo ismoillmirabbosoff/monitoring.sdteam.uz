@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS users (
     active        BOOLEAN     NOT NULL DEFAULT true,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Boshlang'ich/joriy ochiq parol (admin operatorga berishi uchun ko'rinadi).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS initial_password TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_users_ext ON users (ext);
 
 -- Email tasdiqlash kodlari (login 2-bosqich).
 CREATE TABLE IF NOT EXISTS login_codes (

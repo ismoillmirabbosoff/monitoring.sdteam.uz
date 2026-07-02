@@ -21,11 +21,19 @@ async function submitLogin() {
   loading.value = true
   try {
     const r = await api.authLogin(email.value.trim(), password.value)
+    // Operator: token darhol qaytadi (kod bosqichi yo'q)
+    if (r.token) {
+      auth.setSession(r.token, r.user)
+      const dest = route.query.redirect || (r.user.role === 'admin' ? '/admin' : '/')
+      router.replace(dest)
+      return
+    }
+    // Admin: email kod bosqichi
     devCode.value = r.dev_code || ''
     step.value = 'code'
     await nextTick(); codeInput.value?.focus()
   } catch (e) {
-    error.value = e.message === '401' ? 'Email yoki parol noto\'g\'ri' : (e.message || 'Xato')
+    error.value = e.message === '401' ? 'Login yoki parol noto\'g\'ri' : (e.message || 'Xato')
   } finally { loading.value = false }
 }
 
@@ -56,8 +64,8 @@ function back() { step.value = 'login'; code.value = ''; error.value = '' }
       <!-- 1-bosqich: email + parol -->
       <form v-if="step === 'login'" @submit.prevent="submitLogin" class="auth__form">
         <p class="auth__sub">Tizimga kirish</p>
-        <label class="fld"><span>Email</span>
-          <input v-model="email" type="email" placeholder="email@salesdoc.io" autofocus autocomplete="username" />
+        <label class="fld"><span>Email yoki ext</span>
+          <input v-model="email" type="text" placeholder="email@salesdoc.io yoki 201" autofocus autocomplete="username" />
         </label>
         <label class="fld"><span>Parol</span>
           <input v-model="password" type="password" placeholder="••••••••" autocomplete="current-password" />

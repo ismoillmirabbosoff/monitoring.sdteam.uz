@@ -70,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/employees", s.requireAdmin(s.handleAddEmployee))
 	mux.HandleFunc("GET /api/admin/employees/{id}", s.requireAdmin(s.handleEmployeeDetail))
 	mux.HandleFunc("PATCH /api/admin/employees/{id}", s.requireAdmin(s.handleUpdateEmployee))
+	mux.HandleFunc("PATCH /api/admin/employees/by-ext/{ext}", s.requireAdmin(s.handleSetHiddenByExt))
 	mux.HandleFunc("GET /api/admin/servers", s.requireAdmin(s.handleListServers))
 	mux.HandleFunc("POST /api/admin/servers", s.requireAdmin(s.handleAddServer))
 	mux.HandleFunc("PATCH /api/admin/servers/{id}", s.requireAdmin(s.handleUpdateServer))

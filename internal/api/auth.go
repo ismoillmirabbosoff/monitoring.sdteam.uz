@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -57,22 +58,46 @@ func (s *Server) currentUser(r *http.Request) (store.User, bool) {
 
 // ---- Login oqimi ----
 
-// POST /api/auth/login {email, password} → kod yuboradi
+// lookupLoginUser identifikator (email yoki operator ext) bo'yicha foydalanuvchini topadi.
+func (s *Server) lookupLoginUser(ctx context.Context, ident string) (store.User, error) {
+	if strings.Contains(ident, "@") {
+		return s.store.UserByEmail(ctx, ident)
+	}
+	if u, err := s.store.UserByExt(ctx, ident); err == nil {
+		return u, nil
+	}
+	return s.store.UserByEmail(ctx, ident)
+}
+
+// POST /api/auth/login {email, password}
+//   - operator: parol to'g'ri bo'lsa darhol sessiya (email/kod shart emas; email o'rniga ext ham bo'ladi)
+//   - admin: email'ga tasdiqlash kodi yuboradi (2-bosqich)
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Email, Password string }
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "email va parol kerak")
+		writeErr(w, http.StatusBadRequest, "login va parol kerak")
 		return
 	}
-	u, err := s.store.UserByEmail(r.Context(), strings.TrimSpace(body.Email))
+	u, err := s.lookupLoginUser(r.Context(), strings.TrimSpace(body.Email))
 	if err != nil || !u.Active {
-		writeErr(w, http.StatusUnauthorized, "email yoki parol noto'g'ri")
+		writeErr(w, http.StatusUnauthorized, "login yoki parol noto'g'ri")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(body.Password)) != nil {
-		writeErr(w, http.StatusUnauthorized, "email yoki parol noto'g'ri")
+		writeErr(w, http.StatusUnauthorized, "login yoki parol noto'g'ri")
 		return
 	}
+	// Operatorlar: kodsiz — darhol sessiya yaratamiz.
+	if u.Role != "admin" {
+		token := randomToken()
+		if err := s.store.CreateSession(r.Context(), token, u.ID, r.UserAgent(), clientIP(r)); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		return
+	}
+	// Admin: email tasdiqlash kodi.
 	code := randomCode()
 	if err := s.store.CreateLoginCode(r.Context(), u.ID, code, 10*time.Minute); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -160,7 +185,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	u, err := s.store.CreateUser(r.Context(), strings.TrimSpace(body.Email), string(hash),
-		strings.TrimSpace(body.Name), body.Role, strings.TrimSpace(body.Ext))
+		strings.TrimSpace(body.Name), body.Role, strings.TrimSpace(body.Ext), body.Password)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "yaratib bo'lmadi (email band bo'lishi mumkin)")
 		return
@@ -182,11 +207,12 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "json noto'g'ri")
 		return
 	}
-	var hash *string
+	var hash, plain *string
 	if body.Password != nil && *body.Password != "" {
 		h, _ := bcrypt.GenerateFromPassword([]byte(*body.Password), bcrypt.DefaultCost)
 		hs := string(h)
 		hash = &hs
+		plain = body.Password // admin ko'rishi uchun ochiq saqlaymiz
 		// parol o'zgarsa — barcha sessiyalarni bekor qilamiz
 		s.store.DeleteUserSessions(r.Context(), id)
 	}
@@ -194,7 +220,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		op := "operator"
 		body.Role = &op
 	}
-	u, err := s.store.UpdateUser(r.Context(), id, body.Name, body.Role, body.Ext, body.Active, hash)
+	u, err := s.store.UpdateUser(r.Context(), id, body.Name, body.Role, body.Ext, body.Active, hash, plain)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

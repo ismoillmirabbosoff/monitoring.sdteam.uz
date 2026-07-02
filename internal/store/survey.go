@@ -135,6 +135,30 @@ func (s *Store) ResponsesInRange(ctx context.Context, from, to int64) ([]Respons
 	return out, rows.Err()
 }
 
+// FilledCallUUIDs berilgan vaqt oralig'idagi (qo'ng'iroq boshlanish vaqti bo'yicha)
+// anketa to'ldirilgan qo'ng'iroq uuid'larini qaytaradi. Javob created_at'iga emas,
+// qo'ng'iroqning start_stamp'iga bog'lanadi — shu bois qoplanish to'g'ri hisoblanadi.
+func (s *Store) FilledCallUUIDs(ctx context.Context, from, to int64) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT sr.call_uuid
+		FROM survey_responses sr
+		JOIN calls c ON c.uuid = sr.call_uuid
+		WHERE c.start_stamp >= $1 AND c.start_stamp <= $2`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var uuid string
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		out[uuid] = true
+	}
+	return out, rows.Err()
+}
+
 // ResponseByCall bitta qo'ng'iroq anketasini qaytaradi (yo'q bo'lsa ErrNotFound).
 func (s *Store) ResponseByCall(ctx context.Context, callUUID string) (Response, error) {
 	var r Response

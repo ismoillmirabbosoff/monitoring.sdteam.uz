@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { GridLayout, GridItem } from 'grid-layout-plus'
 import { api, parseFifoUsers, isExtension, companyForQueue, companyName, COMPANIES, wsUrl } from '../api.js'
 import { t } from '../i18n.js'
 
@@ -55,6 +56,51 @@ const operators = computed(() => {
   list.sort((a, b) => rank[a.status] - rank[b.status] || Number(a.ext) - Number(b.ext))
   return list
 })
+
+// ---- Grafana uslubidagi grid (surish + o'lchamini o'zgartirish) ----
+const GRID_COLS = 12, DEF_W = 3, DEF_H = 2
+const editable = ref(false)
+const layout = ref([])              // [{i:ext, x, y, w, h}]
+const opByExt = computed(() => Object.fromEntries(operators.value.map((o) => [o.ext, o])))
+// Ekranda ko'rinadigan grid katakchalari (layout + operator ma'lumoti)
+const gridItems = computed(() =>
+  layout.value.map((it) => ({ ...it, op: opByExt.value[it.i] })).filter((c) => c.op)
+)
+
+function loadPos() { try { return JSON.parse(localStorage.getItem('tv_layout') || '{}') } catch { return {} } }
+let savedPos = loadPos()
+function savePos() { localStorage.setItem('tv_layout', JSON.stringify(savedPos)) }
+
+// Ko'rinadigan operatorlar bilan layoutni moslashtiradi (yangi qo'shadi, yo'qolganini olib tashlaydi).
+function reconcile() {
+  const visible = operators.value.map((o) => o.ext)
+  const visibleSet = new Set(visible)
+  const next = layout.value.filter((it) => visibleSet.has(it.i))
+  const have = new Set(next.map((it) => it.i))
+  let idx = next.length
+  for (const ext of visible) {
+    if (have.has(ext)) continue
+    const p = savedPos[ext]
+    if (p) next.push({ i: ext, x: p.x, y: p.y, w: p.w, h: p.h })
+    else {
+      next.push({ i: ext, x: (idx % 4) * DEF_W, y: Math.floor(idx / 4) * DEF_H, w: DEF_W, h: DEF_H })
+      idx++
+    }
+  }
+  layout.value = next
+}
+watch(operators, reconcile, { immediate: true })
+
+function onLayoutUpdated(newLayout) {
+  for (const it of newLayout) savedPos[it.i] = { x: it.x, y: it.y, w: it.w, h: it.h }
+  savePos()
+}
+function resetLayout() {
+  savedPos = {}
+  savePos()
+  layout.value = []
+  reconcile()
+}
 
 const counts = computed(() => {
   const c = { online: 0, offline: 0, talking: 0, ringing: 0, dnd: 0 }
@@ -189,39 +235,65 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <div class="tv__list">
-      <TransitionGroup name="list">
-        <div v-for="op in operators" :key="op.ext" class="item" :class="`s-${op.status}`">
+    <div class="tv__toolbar">
+      <button class="tv__editbtn" :class="{ active: editable }" @click="editable = !editable">
+        {{ editable ? '🔓 Tahrir rejimi yoniq' : '🔒 Joylashuvni tahrirlash' }}
+      </button>
+      <template v-if="editable">
+        <button class="tv__resetbtn" @click="resetLayout">↺ Tartibni tiklash</button>
+        <span class="tv__hint">Kartani suring · burchakdan cho'zib kattalashtiring</span>
+      </template>
+    </div>
+
+    <GridLayout
+      v-if="gridItems.length"
+      v-model:layout="layout"
+      :col-num="GRID_COLS"
+      :row-height="72"
+      :margin="[16, 16]"
+      :is-draggable="editable"
+      :is-resizable="editable"
+      :vertical-compact="true"
+      @layout-updated="onLayoutUpdated"
+    >
+      <GridItem
+        v-for="cell in gridItems"
+        :key="cell.i"
+        :i="cell.i"
+        :x="cell.x" :y="cell.y" :w="cell.w" :h="cell.h"
+        :min-w="2" :min-h="1"
+      >
+        <div class="item" :class="[`s-${cell.op.status}`, { 'is-edit': editable }]">
           <div class="item__top">
-            <span class="item__ext mono">{{ op.ext }}</span>
-            <span class="item__phone" :title="t(STATUS[op.status].key)">
+            <span class="item__ext mono">{{ cell.op.ext }}</span>
+            <span class="item__phone" :title="t(STATUS[cell.op.status].key)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
             </span>
           </div>
-          <div class="item__name">{{ op.name }}</div>
-          <div class="item__st">{{ t(STATUS[op.status].key) }}</div>
+          <div class="item__name">{{ cell.op.name }}</div>
+          <div class="item__st">{{ t(STATUS[cell.op.status].key) }}</div>
           <div class="item__metrics">
             <div class="m m--in" :title="t('st.inCalls')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 2 16 8 22 8"/><line x1="22" y1="2" x2="16" y2="8"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <span>{{ op.incoming }}</span>
+              <span>{{ cell.op.incoming }}</span>
             </div>
             <div class="m m--out" :title="t('st.outCalls')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 8 22 2 16 2"/><line x1="16" y1="8" x2="22" y2="2"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <span>{{ op.outgoing }}</span>
+              <span>{{ cell.op.outgoing }}</span>
             </div>
-            <div class="m m--surv" :class="{ warn: op.unfilled > 0 }" :title="t('tv.unfilled')">
+            <div class="m m--surv" :class="{ warn: cell.op.unfilled > 0 }" :title="t('tv.unfilled')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
-              <span>{{ op.unfilled }}</span>
+              <span>{{ cell.op.unfilled }}</span>
             </div>
             <div class="m m--srv" :title="t('tv.servers')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
-              <span>{{ op.servers }}</span>
+              <span>{{ cell.op.servers }}</span>
             </div>
           </div>
         </div>
-      </TransitionGroup>
-      <div v-if="!operators.length" class="tv__empty">—</div>
-    </div>
+      </GridItem>
+    </GridLayout>
+    <div v-else class="tv__empty">—</div>
   </div>
 </template>
 
@@ -255,14 +327,24 @@ onUnmounted(() => {
 .s-ringing { --c: #f59e0b; }
 .s-dnd     { --c: #f97316; }
 
-/* Minimalist kartalar */
-.tv__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+/* Grafana uslubidagi grid toolbar */
+.tv__toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.tv__editbtn { background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+  padding: 9px 16px; font-size: 13px; border-radius: 10px; }
+.tv__editbtn:hover { color: var(--text); transform: none; box-shadow: none; }
+.tv__editbtn.active { background: var(--accent-soft, rgba(109,94,252,0.16)); color: var(--accent); border-color: transparent; }
+.tv__resetbtn { background: var(--surface-2); color: var(--text-dim); padding: 9px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: 10px; }
+.tv__resetbtn:hover { color: var(--text); transform: none; box-shadow: none; }
+.tv__hint { font-size: 12.5px; color: var(--text-faint); }
+
+/* Grid katakni to'ldiradigan kartalar */
 .item {
+  height: 100%; display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-  padding: 18px 20px; box-shadow: var(--shadow); animation: fade-up 0.35s both;
-  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 16px 18px; box-shadow: var(--shadow); transition: box-shadow 0.2s;
 }
-.item:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.item.is-edit { cursor: move; }
+.item:hover { box-shadow: var(--shadow-lg); }
 .item__top { display: flex; align-items: center; justify-content: space-between; }
 .item__ext { font-size: 15px; color: var(--text-faint); font-weight: 500; }
 .item__dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
@@ -274,7 +356,7 @@ onUnmounted(() => {
 .item__name { font-size: 17px; font-weight: 600; color: var(--text); margin-top: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item__st { font-size: 11.5px; color: var(--c); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px; font-weight: 600; }
-.item__metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px;
+.item__metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: auto;
   padding-top: 12px; border-top: 1px solid var(--border); }
 .m { display: flex; align-items: center; justify-content: center; gap: 5px;
   font-size: 14px; font-weight: 700; color: var(--text); font-family: var(--mono); }
@@ -288,5 +370,24 @@ onUnmounted(() => {
 .s-offline .item__name { color: var(--text-dim); }
 .s-talking .item__dot, .s-ringing .item__dot, .s-online .item__dot { animation: pulse-dot 1.8s infinite; }
 
-.tv__empty { grid-column: 1/-1; text-align: center; padding: 80px; color: var(--text-faint); font-size: 18px; }
+.tv__empty { text-align: center; padding: 80px; color: var(--text-faint); font-size: 18px; }
+
+/* grid-layout-plus (bola komponent) uslublari — temaga moslash */
+:deep(.vgl-item--placeholder) { background: var(--accent, #6d5efc); opacity: 0.18; border-radius: 16px; }
+:deep(.vgl-item__resizer) { z-index: 3; }
+:deep(.vgl-item--dragging) { z-index: 5; }
+:deep(.vgl-item--dragging .item) { box-shadow: var(--shadow-lg); border-color: var(--accent, #6d5efc); }
+</style>
+
+<!-- grid-layout-plus asosiy CSS (paket alohida css fayl bermaydi — shu bois shu yerda) -->
+<style>
+.vgl-layout { --vgl-placeholder-bg: var(--accent, #6d5efc); --vgl-placeholder-opacity: 18%; --vgl-placeholder-z-index: 2; --vgl-item-resizing-z-index: 3; --vgl-item-resizing-opacity: 60%; --vgl-item-dragging-z-index: 5; --vgl-item-dragging-opacity: 100%; --vgl-resizer-size: 14px; --vgl-resizer-border-color: var(--text-faint, #888); --vgl-resizer-border-width: 2px; position: relative; box-sizing: border-box; transition: height .2s ease; }
+.vgl-item { position: absolute; box-sizing: border-box; transition: .2s ease; transition-property: left, top, right; }
+.vgl-item--placeholder { z-index: var(--vgl-placeholder-z-index, 2); user-select: none; background-color: var(--vgl-placeholder-bg, red); opacity: var(--vgl-placeholder-opacity, 20%); transition-duration: .1s; border-radius: 16px; }
+.vgl-item--no-touch { touch-action: none; }
+.vgl-item--transform { right: auto; left: 0; transition-property: transform; }
+.vgl-item--resizing { z-index: var(--vgl-item-resizing-z-index, 3); user-select: none; opacity: var(--vgl-item-resizing-opacity, 60%); }
+.vgl-item--dragging { z-index: var(--vgl-item-dragging-z-index, 3); user-select: none; opacity: var(--vgl-item-dragging-opacity, 100%); transition: none; }
+.vgl-item__resizer { position: absolute; right: 0; bottom: 0; box-sizing: border-box; width: var(--vgl-resizer-size); height: var(--vgl-resizer-size); cursor: se-resize; }
+.vgl-item__resizer::before { position: absolute; top: 0; right: 3px; bottom: 3px; left: 0; content: ""; border: 0 solid var(--vgl-resizer-border-color); border-right-width: var(--vgl-resizer-border-width); border-bottom-width: var(--vgl-resizer-border-width); }
 </style>

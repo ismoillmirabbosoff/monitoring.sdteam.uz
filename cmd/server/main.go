@@ -14,6 +14,7 @@ import (
 	"github.com/salesdoc/monitoring-api/internal/api"
 	"github.com/salesdoc/monitoring-api/internal/config"
 	"github.com/salesdoc/monitoring-api/internal/email"
+	"github.com/salesdoc/monitoring-api/internal/livestate"
 	"github.com/salesdoc/monitoring-api/internal/onlinepbx"
 	"github.com/salesdoc/monitoring-api/internal/store"
 	syncw "github.com/salesdoc/monitoring-api/internal/sync"
@@ -84,9 +85,26 @@ func main() {
 		log.Println("OGOHLANTIRISH: ONPBX_API_KEY/ID yoki ONPBX_KEYS_URL yo'q — sinx va /keys ishlamaydi")
 	}
 
+	apiSrv := api.NewServer(st, pbx, mailer, cfg.CORSOrigins, cfg.OnpbxDomain, cfg.WSPort, cfg.WebDir, cfg.AdminPass)
+
+	// Jonli holat bridge: OnlinePBX WS'ga doimiy ulanib, operatorlar registratsiya/BLF
+	// holatini xotirada saqlaydi (REST'da bunday ma'lumot yo'q, WS snapshot bermaydi).
+	wsKey := cfg.OnpbxWSKey
+	if wsKey == "" {
+		wsKey = cfg.OnpbxAPIKey
+	}
+	if cfg.OnpbxDomain != "" && wsKey != "" {
+		bridge := livestate.New(cfg.OnpbxDomain, cfg.WSPort, wsKey)
+		apiSrv.SetBridge(bridge)
+		go bridge.Run(ctx)
+		log.Println("livestate bridge ishga tushdi (OnlinePBX WS)")
+	} else {
+		log.Println("livestate bridge o'tkazib yuborildi (domain/ws_key yo'q)")
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.NewServer(st, pbx, mailer, cfg.CORSOrigins, cfg.OnpbxDomain, cfg.WSPort, cfg.WebDir, cfg.AdminPass).Handler(),
+		Handler:           apiSrv.Handler(),
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,

@@ -1,24 +1,24 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { GridLayout, GridItem } from 'grid-layout-plus'
-import { api, parseFifoUsers, isExtension, companyForQueue, companyName, COMPANIES, wsUrl } from '../api.js'
+import { api, companyForQueue, companyName, COMPANIES } from '../api.js'
 import { t } from '../i18n.js'
 
-const rawStatus = ref({})     // ext -> xom OnlinePBX holati (WS user_registration/user_blf'dan)
+const statusMap = ref({})     // ext -> holat (bridge'dan: online/offline/talking/ringing/dnd)
+const bridgeConnected = ref(false)
 const names = ref({})         // ext -> ism
 const compMap = ref({})       // ext -> kompaniya
 const opStats = ref({})       // ext -> {incoming, outgoing, survey_unfilled, servers}
 const hidden = ref(new Set())
 const company = ref('')
 const now = ref(new Date())
-const wsState = ref('connecting')
 const theme = ref(localStorage.getItem('theme') || 'light')
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
   localStorage.setItem('theme', theme.value)
   document.documentElement.setAttribute('data-theme', theme.value)
 }
-let ws = null, pollTimer = null, clockTimer = null, reconnectTimer = null
+let pollTimer = null, liveTimer = null, clockTimer = null
 
 const companies = COMPANIES
 
@@ -32,25 +32,12 @@ const STATUS = {
   unknown: { key: 'tv.unknown', color: '#94a3b8' },
 }
 
-// OnlinePBX xom holat (registration state / blf status) → bizning kategoriya.
-// Asl monitoring app mantiqi: register/registered/answered/hangup → online,
-// unregister → offline, ringing → ringing, dnd → dnd, boshqasi → unknown (kulrang).
-function mapStatus(raw) {
-  const s = String(raw || '').toLowerCase()
-  if (s === 'talking' || s === 'busy') return 'talking'
-  if (s === 'ringing' || s === 'early') return 'ringing'
-  if (s === 'dnd' || s === 'do_not_disturb') return 'dnd'
-  if (s === 'unregister' || s === 'unregistered') return 'offline'
-  if (['register', 'registered', 'answered', 'hangup', 'register_attempt', 'pre_register', 'online'].includes(s)) return 'online'
-  return 'unknown'
-}
-
 const operators = computed(() => {
-  const exts = new Set([...Object.keys(rawStatus.value), ...Object.keys(names.value)])
+  const exts = new Set([...Object.keys(statusMap.value), ...Object.keys(names.value)])
   let list = [...exts]
     .filter((e) => !hidden.value.has(e))
     .map((ext) => {
-      const status = mapStatus(rawStatus.value[ext])
+      const status = statusMap.value[ext] || 'unknown'
       const st = opStats.value[ext] || {}
       return {
         ext,
@@ -154,20 +141,13 @@ async function loadStats() {
 }
 async function refresh() { await Promise.all([loadUsers(), loadHidden(), loadStats()]) }
 
-async function initWS() {
+// Jonli holat — backend bridge snapshot'ini olamiz (bridge OnlinePBX WS'ni 24/7 tinglaydi).
+async function loadLiveState() {
   try {
-    const [cfg, keys] = await Promise.all([api.config(), api.keys()])
-    if (!keys.auth_key) { wsState.value = 'offline'; return }
-    ws = new WebSocket(wsUrl(cfg, keys.auth_key))
-    ws.onopen = () => {
-      wsState.value = 'live'
-      ws.send(JSON.stringify({ command: 'subscribe', reqId: 'tv-' + Date.now(),
-        data: { eventGroups: ['user_blf', 'user_registration', 'user_status', 'call_status', 'call_start', 'call_end'] } }))
-    }
-    ws.onmessage = (ev) => { try { handleWS(JSON.parse(ev.data)) } catch {} }
-    ws.onclose = () => { wsState.value = 'offline'; clearTimeout(reconnectTimer); reconnectTimer = setTimeout(initWS, 5000) }
-    ws.onerror = () => { try { ws.close() } catch {} }
-  } catch { wsState.value = 'offline'; reconnectTimer = setTimeout(initWS, 5000) }
+    const r = await api.liveState()
+    statusMap.value = r.operators || {}
+    bridgeConnected.value = !!r.connected
+  } catch {}
 }
 
 function initials(op) {
@@ -177,34 +157,14 @@ function initials(op) {
   return String(op.ext).slice(-2)
 }
 
-// WS hodisalari (asl monitoring app mantiqi):
-//   call_status/call_start/call_end → statistikani yangilaymiz
-//   user_registration → data.state, user_blf/user_status → data.status; kalit = data.uid
-//   xom holat rawStatus'ga yoziladi, mapStatus() rangga aylantiradi.
-function handleWS(msg) {
-  const ev = msg?.event
-  const d = msg?.data || {}
-  if (ev === 'call_status' || ev === 'call_start' || ev === 'call_end') {
-    loadStats() // qo'ng'iroq sonlari yangilanadi
-    return
-  }
-  const uid = String(d?.uid ?? '')
-  if (!uid) return
-  let raw = null
-  if (ev === 'user_blf' || ev === 'user_status') raw = d?.status
-  else if (ev === 'user_registration') raw = d?.state
-  if (raw) rawStatus.value = { ...rawStatus.value, [uid]: raw }
-}
-
 onMounted(async () => {
-  await refresh()
-  initWS()
+  await Promise.all([refresh(), loadLiveState()])
+  liveTimer = setInterval(loadLiveState, 2500) // jonli holat (bridge snapshot)
   pollTimer = setInterval(refresh, 10000)
   clockTimer = setInterval(() => (now.value = new Date()), 1000)
 })
 onUnmounted(() => {
-  clearInterval(pollTimer); clearInterval(clockTimer); clearTimeout(reconnectTimer)
-  try { ws && ws.close() } catch {}
+  clearInterval(pollTimer); clearInterval(liveTimer); clearInterval(clockTimer)
 })
 </script>
 

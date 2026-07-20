@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/salesdoc/monitoring-api/internal/email"
+	"github.com/salesdoc/monitoring-api/internal/livestate"
 	"github.com/salesdoc/monitoring-api/internal/onlinepbx"
 	"github.com/salesdoc/monitoring-api/internal/store"
 )
@@ -22,12 +23,16 @@ type Server struct {
 	store     *store.Store
 	pbx       *onlinepbx.Client
 	email     *email.Sender
+	bridge    *livestate.Bridge
 	origins   []string
 	domain    string
 	wsPort    string
 	webDir    string
 	adminPass string
 }
+
+// SetBridge jonli holat bridge'ini o'rnatadi (ixtiyoriy).
+func (s *Server) SetBridge(b *livestate.Bridge) { s.bridge = b }
 
 func NewServer(st *store.Store, pbx *onlinepbx.Client, em *email.Sender, origins []string, domain, wsPort, webDir, adminPass string) *Server {
 	return &Server{store: st, pbx: pbx, email: em, origins: origins, domain: domain, wsPort: wsPort, webDir: webDir, adminPass: adminPass}
@@ -46,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/monitoring/hidden", s.handleHidden)
 	mux.HandleFunc("GET /api/monitoring/stats", s.handleStats)
 	mux.HandleFunc("GET /api/monitoring/recording", s.handleRecording)
+	mux.HandleFunc("GET /api/monitoring/liveState", s.handleLiveState)
 	// --- Auth (email + kod) ---
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
@@ -336,6 +342,24 @@ func (s *Server) handleRecording(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=600")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+// GET /api/monitoring/liveState — operatorlarning jonli holati (WS bridge'dan).
+// {operators: {ext: "online|offline|talking|ringing|dnd"}, connected, version}
+func (s *Server) handleLiveState(w http.ResponseWriter, r *http.Request) {
+	ops := map[string]string{}
+	connected := false
+	var version int64
+	if s.bridge != nil {
+		ops = s.bridge.Snapshot()
+		connected = s.bridge.Connected()
+		version = s.bridge.Version()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"operators": ops,
+		"connected": connected,
+		"version":   version,
+	})
 }
 
 // ---- helpers ----

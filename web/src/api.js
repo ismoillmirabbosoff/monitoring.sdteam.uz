@@ -41,6 +41,7 @@ export const api = {
   users: () => get('/api/monitoring/users'),
   hidden: () => get('/api/monitoring/hidden'),
   stats: (company) => get('/api/monitoring/stats', company ? { company } : undefined),
+  liveState: () => get('/api/monitoring/liveState'),
   bigData: (date) => get('/api/monitoring/bigData', { date }),
   operatorTime: (date) => get('/api/monitoring/operatorTime', { date }),
   data: (gateway, from, to) => get('/api/monitoring/data', { gateway, from, to }),

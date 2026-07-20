@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -44,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/monitoring/users", s.handleUsers)
 	mux.HandleFunc("GET /api/monitoring/hidden", s.handleHidden)
 	mux.HandleFunc("GET /api/monitoring/stats", s.handleStats)
+	mux.HandleFunc("GET /api/monitoring/recording", s.handleRecording)
 	// --- Auth (email + kod) ---
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
@@ -58,6 +60,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/admin/sessions/{token}", s.requireAdmin(s.handleRevokeSession))
 	// --- Anketa ---
 	mux.HandleFunc("GET /api/survey/questions", s.requireAuth(s.handleActiveQuestions))
+	mux.HandleFunc("GET /api/survey/config", s.requireAuth(s.handleActiveSurveyConfig))
+	mux.HandleFunc("GET /api/admin/survey/config", s.requireAdmin(s.handleGetSurveyConfig))
+	mux.HandleFunc("PUT /api/admin/survey/config", s.requireAdmin(s.handleSaveSurveyConfig))
 	mux.HandleFunc("POST /api/survey/responses", s.requireAuth(s.handleSaveResponse))
 	mux.HandleFunc("GET /api/survey/responses", s.requireAuth(s.handleListResponses))
 	mux.HandleFunc("GET /api/admin/survey/questions", s.requireAdmin(s.handleListQuestions))
@@ -75,6 +80,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/servers", s.requireAdmin(s.handleAddServer))
 	mux.HandleFunc("PATCH /api/admin/servers/{id}", s.requireAdmin(s.handleUpdateServer))
 	mux.HandleFunc("DELETE /api/admin/servers/{id}", s.requireAdmin(s.handleDeleteServer))
+	// --- Ish vaqti + Audit log ---
+	mux.HandleFunc("GET /api/admin/work-hours", s.requireAdmin(s.handleListWorkHours))
+	mux.HandleFunc("POST /api/admin/work-hours", s.requireAdmin(s.handleSaveWorkHours))
+	mux.HandleFunc("GET /api/admin/audit-log", s.requireAdmin(s.handleListAudit))
+	// --- Mijoz baholari (otzyvlar) ---
+	mux.HandleFunc("POST /api/feedback", s.handleSubmitFeedback) // public
+	mux.HandleFunc("GET /api/admin/feedback", s.requireAdmin(s.handleListFeedback))
+	// --- Operator ballari (avtomatizatsiya) ---
+	mux.HandleFunc("GET /api/admin/scores", s.requireAdmin(s.handleListScores))
+	mux.HandleFunc("POST /api/admin/scores", s.requireAdmin(s.handleAddScore))
+	mux.HandleFunc("DELETE /api/admin/scores/{id}", s.requireAdmin(s.handleDeleteScore))
 	// statik UI (SPA fallback bilan) — barcha boshqa GET so'rovlar
 	mux.HandleFunc("GET /", s.handleStatic)
 	return s.cors(mux)
@@ -270,6 +286,56 @@ func (s *Server) handleFifo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "1", "data": fifos})
+}
+
+// GET /api/monitoring/recording?uuid=... — qo'ng'iroq yozuvini (mp3) OnlinePBX'dan
+// olib, brauzerga uzatadi (Range qo'llab-quvvatlanadi — audio pleyerда oldinga surish uchun).
+func (s *Server) handleRecording(w http.ResponseWriter, r *http.Request) {
+	uuid := r.URL.Query().Get("uuid")
+	if uuid == "" {
+		writeErr(w, http.StatusBadRequest, "uuid majburiy")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	url, err := s.pbx.RecordingURL(ctx, uuid)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "yozuv URL: "+err.Error())
+		return
+	}
+	if url == "" {
+		writeErr(w, http.StatusNotFound, "yozuv topilmadi")
+		return
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if rng := r.Header.Get("Range"); rng != "" {
+		req.Header.Set("Range", rng) // seek/qisman yuklab olishni uzatamiz
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "yozuv yuklab olinmadi: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "audio/mpeg")
+	}
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Cache-Control", "private, max-age=600")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // ---- helpers ----

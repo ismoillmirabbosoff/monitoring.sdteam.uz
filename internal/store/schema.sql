@@ -111,3 +111,58 @@ CREATE TABLE IF NOT EXISTS survey_responses (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_survey_resp_created ON survey_responses (created_at);
+
+-- Anketa konfiguratsiyasi (phone.sdteam uslubi: reason/modules/status/comment).
+-- Yagona qator (id=1), config JSONB.
+CREATE TABLE IF NOT EXISTS survey_config (
+    id         INT PRIMARY KEY DEFAULT 1,
+    config     JSONB       NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO survey_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Ish vaqti: kompaniya (kanal) × haftakuni bo'yicha ish soatlari.
+-- company='' — standart/fallback. weekday: 0=Yakshanba … 6=Shanba.
+CREATE TABLE IF NOT EXISTS work_hours (
+    company    TEXT    NOT NULL DEFAULT '',
+    weekday    INT     NOT NULL,
+    start_hour INT     NOT NULL DEFAULT 9,
+    end_hour   INT     NOT NULL DEFAULT 18,
+    active     BOOLEAN NOT NULL DEFAULT true,
+    PRIMARY KEY (company, weekday)
+);
+
+-- Audit log: admin o'zgartirishlari (POST/PATCH/DELETE) avtomatik yoziladi.
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER,
+    user_name  TEXT        NOT NULL DEFAULT '',
+    action     TEXT        NOT NULL DEFAULT '',
+    method     TEXT        NOT NULL DEFAULT '',
+    path       TEXT        NOT NULL DEFAULT '',
+    ip         TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at DESC);
+
+-- Mijoz baholari (otzyvlar): baholash havolasi orqali mijoz to'ldiradi (score 1-5 + izoh).
+CREATE TABLE IF NOT EXISTS client_feedback (
+    id         SERIAL PRIMARY KEY,
+    call_uuid  TEXT,
+    phone      TEXT        NOT NULL DEFAULT '',
+    score      INT         NOT NULL DEFAULT 0,
+    comment    TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON client_feedback (created_at DESC);
+
+-- Operator ballari (avtomatizatsiya/bigreport: supervizor ball beradi, leaderboard).
+CREATE TABLE IF NOT EXISTS operator_scores (
+    id         SERIAL PRIMARY KEY,
+    ext        TEXT        NOT NULL,
+    points     INT         NOT NULL DEFAULT 0,
+    reason     TEXT        NOT NULL DEFAULT '',
+    created_by TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scores_ext ON operator_scores (ext);

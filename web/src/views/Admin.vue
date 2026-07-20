@@ -65,6 +65,39 @@ async function removeServer(id) {
   try { await api.deleteServer(id); await loadAll() } catch (e) { flash('Xato: ' + e.message) }
 }
 
+// --- Server tahrirlash (modal) ---
+const editServer = ref(null)
+const esf = ref({ name: '', company: '', employee_id: '', assigned_at: '' })
+const editEmployees = computed(() =>
+  employees.value.filter((e) => !esf.value.company || e.company === esf.value.company || e.id === editServer.value?.employee_id)
+)
+function openEdit(server) {
+  editServer.value = server
+  esf.value = {
+    name: server.name,
+    company: server.company || '',
+    employee_id: server.employee_id || '',
+    assigned_at: server.assigned_at ? String(server.assigned_at).slice(0, 10) : '',
+  }
+}
+function closeEdit() { editServer.value = null }
+async function saveEdit() {
+  if (!esf.value.name.trim()) { flash('Nom kerak'); return }
+  try {
+    const payload = {
+      name: esf.value.name.trim(),
+      company: esf.value.company,
+      employee_id: esf.value.employee_id ? Number(esf.value.employee_id) : null,
+    }
+    if (esf.value.assigned_at) payload.assigned_at = esf.value.assigned_at
+    const r = await api.updateServer(editServer.value.id, payload)
+    Object.assign(editServer.value, r)
+    flash(`"${r.name}" yangilandi`)
+    closeEdit()
+    await loadAll()
+  } catch (e) { flash('Xato: ' + e.message) }
+}
+
 // --- Serverlar ro'yxati (jadval) ---
 const tab = ref(route.query.tab === 'list' ? 'list' : 'board') // 'board' | 'list'
 
@@ -177,7 +210,7 @@ onMounted(loadAll)
           <TransitionGroup name="list">
             <ServerCard v-for="(s, i) in byColumn(c.col)" :key="s.id" :server="s"
                         :style="{ animationDelay: i * 50 + 'ms' }"
-                        @open="openEmployee" @remove="removeServer" />
+                        @open="openEmployee" @remove="removeServer" @edit="openEdit" />
           </TransitionGroup>
           <div v-if="!byColumn(c.col).length" class="board__empty">Bo'sh</div>
         </div>
@@ -220,7 +253,12 @@ onMounted(loadAll)
               </button>
               <div class="tbl__status" :class="{ on: s.active }">{{ s.active ? 'Faol' : 'Nofaol' }}</div>
             </td>
-            <td><button class="tbl__del" @click="removeServer(s.id)" title="O'chirish">×</button></td>
+            <td class="ta-r">
+              <button class="tbl__edit" @click="openEdit(s)" title="Tahrirlash">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+              </button>
+              <button class="tbl__del" @click="removeServer(s.id)" title="O'chirish">×</button>
+            </td>
           </tr>
           <tr v-if="!servers.length"><td colspan="6" class="tbl__empty">Hali server yo'q</td></tr>
         </tbody>
@@ -251,6 +289,39 @@ onMounted(loadAll)
         </div>
       </div>
     </div>
+
+    <!-- Server tahrirlash modali -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="editServer" class="smodal" @click.self="closeEdit">
+          <div class="smodal__card">
+            <div class="smodal__head">
+              <h3>Serverni tahrirlash</h3>
+              <button class="smodal__x" @click="closeEdit">×</button>
+            </div>
+            <div class="smodal__body">
+              <label class="sfld"><span>Nom</span><input v-model="esf.name" placeholder="Server nomi" /></label>
+              <label class="sfld"><span>Kompaniya</span>
+                <select v-model="esf.company">
+                  <option v-for="c in companiesAll.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+              </label>
+              <label class="sfld"><span>Xodim</span>
+                <select v-model="esf.employee_id">
+                  <option value="">— biriktirilmagan —</option>
+                  <option v-for="e in editEmployees" :key="e.id" :value="e.id">{{ e.name }}</option>
+                </select>
+              </label>
+              <label class="sfld"><span>Ish boshlagan sana</span><input type="date" v-model="esf.assigned_at" /></label>
+            </div>
+            <div class="smodal__foot">
+              <button class="btn-ghost" @click="closeEdit">Bekor</button>
+              <button @click="saveEdit">Saqlash</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -351,6 +422,24 @@ onMounted(loadAll)
 .emp__eye:hover { transform: none; box-shadow: none; color: var(--text); background: var(--surface-3); }
 .emp__eye.off { color: var(--amber); }
 .emp__eye svg { width: 16px; height: 16px; }
+.tbl__edit { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); width: 30px; height: 30px; padding: 0; border-radius: 8px; margin-right: 6px; }
+.tbl__edit svg { width: 14px; height: 14px; }
+.tbl__edit:hover { color: var(--accent); transform: none; box-shadow: none; }
+
+/* Server tahrirlash modali */
+.smodal { position: fixed; inset: 0; z-index: 100; background: rgba(8,10,18,0.55); backdrop-filter: blur(4px); display: grid; place-items: center; padding: 20px; }
+.smodal__card { width: 420px; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
+.smodal__head { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.smodal__head h3 { font-size: 17px; font-weight: 700; }
+.smodal__x { background: var(--surface-2); color: var(--text-faint); font-size: 22px; width: 34px; height: 34px; padding: 0; border-radius: 10px; line-height: 1; }
+.smodal__x:hover { color: var(--text); transform: none; box-shadow: none; }
+.smodal__body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.sfld { display: flex; flex-direction: column; gap: 6px; }
+.sfld span { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.sfld input, .sfld select { width: 100%; }
+.smodal__foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); }
+.modal-enter-active, .modal-leave-active { transition: opacity 0.25s; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
 .emp__avatar { width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center;
   background: var(--grad-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
 .emp__info { flex: 1; min-width: 0; }

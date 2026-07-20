@@ -85,6 +85,44 @@ func (s *Store) DeleteQuestion(ctx context.Context, id int) error {
 	return err
 }
 
+// ---- Anketa konfiguratsiyasi (reason/modules/status/comment) ----
+
+// DefaultSurveyConfig — phone.sdteam uslubidagi boshlang'ich anketa konfiguratsiyasi.
+const DefaultSurveyConfig = `{
+  "common_modules": ["Дашборд","Настройки","Аудит 2","Команда","Клиенты","Маркировка","Заявки","Планы","Супервайзер","Продажи","Финансы","Отчёты","Касса","GPS","Биллинг","Мобильные приложения","Партнёр","Код объединения","Накладные","Принтеры","Обучение","Новый клиент"],
+  "payment_topics": ["Продление / смена тарифа","Жалоба на цену","Ускорить получение оплаты","Возврат денег","Счета и документы","Другое"],
+  "statuses": ["Решено на звонке","В работе","В ожидании разработки","Требует уточнения / проверки"],
+  "reasons": [
+    {"key":"bug","label":"Баг","module_set":"common","module_title":"Модули","required":false},
+    {"key":"product","label":"Вопрос по продукту","module_set":"common","module_title":"Модули","required":false},
+    {"key":"improvement","label":"Запрос на доработку","module_set":"common","module_title":"Модули","required":false},
+    {"key":"other","label":"Другое","module_set":"common","module_title":"Модули","required":true},
+    {"key":"payment","label":"Вопрос по оплате","module_set":"payment","module_title":"Оплата","required":false}
+  ]
+}`
+
+// GetSurveyConfig anketa konfiguratsiyasini qaytaradi (bo'sh bo'lsa — default).
+func (s *Store) GetSurveyConfig(ctx context.Context) (json.RawMessage, error) {
+	var cfg json.RawMessage
+	err := s.pool.QueryRow(ctx, `SELECT config FROM survey_config WHERE id = 1`).Scan(&cfg)
+	if err != nil || len(cfg) == 0 {
+		return json.RawMessage(DefaultSurveyConfig), nil
+	}
+	trimmed := string(cfg)
+	if trimmed == "{}" || trimmed == "null" {
+		return json.RawMessage(DefaultSurveyConfig), nil
+	}
+	return cfg, nil
+}
+
+// SaveSurveyConfig anketa konfiguratsiyasini saqlaydi.
+func (s *Store) SaveSurveyConfig(ctx context.Context, cfg json.RawMessage) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO survey_config (id, config, updated_at) VALUES (1, $1, now())
+		ON CONFLICT (id) DO UPDATE SET config = $1, updated_at = now()`, cfg)
+	return err
+}
+
 // ---- Anketa javoblari ----
 
 type Response struct {

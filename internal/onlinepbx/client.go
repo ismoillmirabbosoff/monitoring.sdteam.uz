@@ -364,6 +364,69 @@ func (c *Client) SearchHistory(ctx context.Context, from, to int64, limit int) (
 	return all, nil
 }
 
+// RecordingURL uuid bo'yicha qo'ng'iroq yozuvi (mp3) uchun OnlinePBX'dan vaqtinchalik
+// (signed) yuklab olish URL'ini qaytaradi. mongo_history/search.json {uuid, download:1}
+// so'rovi javobida `data` maydoni bevosita mp3 URL (string) bo'ladi. URL har so'rovda
+// yangilanadi — shu sabab har ijro oldidan yangidan olinadi.
+func (c *Client) RecordingURL(ctx context.Context, uuid string) (string, error) {
+	token, err := c.Token(ctx)
+	if err != nil {
+		return "", err
+	}
+	url, retry, err := c.recordingReq(ctx, uuid, token)
+	if err != nil {
+		return "", err
+	}
+	if retry {
+		newToken, err := c.authenticate(ctx)
+		if err != nil {
+			return "", err
+		}
+		url, _, err = c.recordingReq(ctx, uuid, newToken)
+		if err != nil {
+			return "", err
+		}
+	}
+	return url, nil
+}
+
+func (c *Client) recordingReq(ctx context.Context, uuid, token string) (string, bool, error) {
+	payload, _ := json.Marshal(map[string]any{"uuid": uuid, "download": 1})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint("mongo_history/search.json"), strings.NewReader(string(payload)))
+	if err != nil {
+		return "", false, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-pbx-authentication", token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", false, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	// data string (URL) yoki auth xatosi
+	var r struct {
+		Status    string          `json:"status"`
+		Data      json.RawMessage `json:"data"`
+		IsNotAuth bool            `json:"isNotAuth"`
+		ErrorCode string          `json:"errorCode"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return "", false, fmt.Errorf("recording javobi: %w (body=%.200s)", err, body)
+	}
+	if r.IsNotAuth || r.ErrorCode == "API_KEY_CHECK_FAILED" {
+		return "", true, nil
+	}
+	if r.Status != "1" {
+		return "", false, fmt.Errorf("recording status=%s", r.Status)
+	}
+	var url string
+	_ = json.Unmarshal(r.Data, &url) // data — URL string
+	return url, false, nil
+}
+
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if v != "" {

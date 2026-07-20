@@ -2,11 +2,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { api, isExtension, fmtDuration, fmtTime, todayStr } from '../api.js'
 import { auth } from '../auth.js'
-import SurveyForm from '../components/SurveyForm.vue'
+import AnketaForm from '../components/AnketaForm.vue'
 
 const calls = ref([])
 const responded = ref(new Map()) // call_uuid -> response
-const questions = ref([])
+const names = ref({})            // ext -> operator ismi
+const config = ref({ reasons: [], common_modules: [], payment_topics: [], statuses: [] })
+function opName(c) { const e = opExt(c); return names.value[e] || ('Operator ' + e) }
 const loading = ref(true)
 const tab = ref('todo') // todo | done | all
 const day = ref(todayStr())
@@ -34,12 +36,15 @@ async function load() {
   loading.value = true
   try {
     const [from, to] = dayRange()
-    const [cs, rs, qs] = await Promise.all([
+    const [cs, rs, cfg, us] = await Promise.all([
       api.data('', from, to),
       api.surveyResponses(from, to),
-      api.surveyQuestions(),
+      api.surveyConfig(),
+      api.users().catch(() => []),
     ])
-    questions.value = qs
+    config.value = cfg || config.value
+    const nm = {}; for (const u of us || []) { if (u.num) nm[String(u.num)] = u.name }
+    names.value = nm
     const map = new Map()
     for (const r of rs) map.set(r.call_uuid, r)
     responded.value = map
@@ -71,10 +76,11 @@ function openFill(c) {
 function close() { active.value = null }
 
 async function submit() {
-  // majburiy savollarni tekshirish
-  for (const q of questions.value) {
-    if (q.required && !answers.value[q.id]) { flash(`"${q.label}" majburiy`); return }
-  }
+  const a = answers.value
+  if (!a.reason_key) { flash('Причина обращения tanlang'); return }
+  if (!a.status) { flash('Статус tanlang'); return }
+  const reason = (config.value.reasons || []).find((r) => r.key === a.reason_key)
+  if (reason && reason.required && !(a.comment || '').trim()) { flash('Комментарий majburiy'); return }
   saving.value = true
   try {
     await api.surveySubmit({ call_uuid: active.value.uuid, operator_ext: opExt(active.value), answers: answers.value })
@@ -115,7 +121,7 @@ onMounted(load)
         </div>
         <div class="row__main">
           <div class="row__num mono">{{ c.caller_id_number }} → {{ c.destination_number }}</div>
-          <div class="row__meta">Operator #{{ opExt(c) }} · {{ fmtDuration(c.user_talk_time) }} · {{ fmtTime(c.start_stamp) }}</div>
+          <div class="row__meta"><b>{{ opName(c) }}</b> · #{{ opExt(c) }} · {{ fmtDuration(c.user_talk_time) }} · {{ fmtTime(c.start_stamp) }}</div>
         </div>
         <button v-if="responded.has(c.uuid)" class="row__btn done-btn" @click="openFill(c)">✓ Ko'rish</button>
         <button v-else class="row__btn" @click="openFill(c)">To'ldirish</button>
@@ -136,13 +142,14 @@ onMounted(load)
                 </div>
                 <div>
                   <h3>Anketa to'ldirish</h3>
-                  <p class="mono">{{ active.caller_id_number }} → {{ active.destination_number }} · #{{ opExt(active) }}</p>
+                  <p class="opline">👤 <b>{{ opName(active) }}</b> · #{{ opExt(active) }}</p>
+                  <p class="mono nums">{{ active.caller_id_number }} → {{ active.destination_number }}</p>
                 </div>
               </div>
               <button class="modal__x" @click="close">×</button>
             </div>
             <div class="modal__body">
-              <SurveyForm :questions="questions" v-model="answers" />
+              <AnketaForm :config="config" v-model="answers" />
             </div>
             <div class="modal__foot">
               <button class="btn-ghost" @click="close">Bekor</button>

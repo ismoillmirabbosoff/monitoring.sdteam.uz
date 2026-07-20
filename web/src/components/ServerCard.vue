@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { companyName } from '../api.js'
 
 const props = defineProps({ server: Object })
-const emit = defineEmits(['open', 'remove'])
+const emit = defineEmits(['open', 'remove', 'edit'])
 
 const age = computed(() => {
   const d = props.server.days
@@ -21,6 +21,9 @@ const age = computed(() => {
     <div class="srv__body">
       <div class="srv__top">
         <div class="srv__name" :title="server.name">{{ server.name }}</div>
+        <button class="srv__edit" @click.stop="emit('edit', server)" title="Tahrirlash">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        </button>
         <button class="srv__x" @click.stop="emit('remove', server.id)" title="O'chirish">×</button>
       </div>
       <div class="srv__emp" v-if="server.employee_name" @click="emit('open', server.employee_id)">
@@ -55,6 +58,9 @@ const age = computed(() => {
 .srv__x { background: none; border: none; color: var(--text-faint); font-size: 18px; cursor: pointer;
   line-height: 1; padding: 0 2px; transition: color 0.2s; }
 .srv__x:hover { color: var(--red); }
+.srv__edit { background: none; border: none; color: var(--text-faint); cursor: pointer; padding: 0 2px; transition: color 0.2s; }
+.srv__edit svg { width: 14px; height: 14px; }
+.srv__edit:hover { color: var(--accent); }
 .srv__emp { display: flex; align-items: center; gap: 6px; margin-top: 7px;
   font-size: 12px; color: var(--text-dim); cursor: pointer; }
 .srv__emp svg { width: 13px; height: 13px; }

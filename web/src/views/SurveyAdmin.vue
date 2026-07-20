@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { api, isExtension, todayStr, fmtDuration, fmtTime, COMPANIES, companyForGateway, companyForQueue } from '../api.js'
-import SurveyForm from '../components/SurveyForm.vue'
+import AnketaForm from '../components/AnketaForm.vue'
 
 const tab = ref('report')
 const calls = ref([])
@@ -27,10 +27,10 @@ const fPhone = ref('')
 const PAGE_SIZE = 50
 const page = ref(1)
 
-// --- anketa savollari (sozlamalar + to'ldirish) ---
-const questions = ref([])        // barcha (sozlamalar tab)
-const activeQuestions = ref([])  // faol (to'ldirish modali)
-const nf = ref({ label: '', type: 'text', options: '', required: false })
+// --- anketa konfiguratsiyasi (to'ldirish + sozlamalar) ---
+const config = ref({ reasons: [], common_modules: [], payment_topics: [], statuses: [] })
+const cfgText = ref({ common_modules: '', payment_topics: '', statuses: '' })
+const cfgReasons = ref([])
 
 // --- to'ldirish modali ---
 const fillActive = ref(null)
@@ -93,12 +93,31 @@ async function loadReport() {
   finally { loading.value = false }
 }
 
-async function loadQuestions() {
-  try { questions.value = await api.qList() } catch (e) { flash('Xato: ' + e.message) }
+async function loadConfig() {
+  try {
+    const c = await api.surveyConfig()
+    config.value = c
+    cfgText.value = {
+      common_modules: (c.common_modules || []).join('\n'),
+      payment_topics: (c.payment_topics || []).join('\n'),
+      statuses: (c.statuses || []).join('\n'),
+    }
+    cfgReasons.value = JSON.parse(JSON.stringify(c.reasons || []))
+  } catch (e) { flash('Xato: ' + e.message) }
 }
-async function loadActive() {
-  try { activeQuestions.value = await api.surveyQuestions() } catch {}
+function lines(s) { return String(s || '').split('\n').map((x) => x.trim()).filter(Boolean) }
+async function saveConfig() {
+  const payload = {
+    common_modules: lines(cfgText.value.common_modules),
+    payment_topics: lines(cfgText.value.payment_topics),
+    statuses: lines(cfgText.value.statuses),
+    reasons: cfgReasons.value.filter((r) => r.key && r.label),
+  }
+  try { await api.qConfigSave(payload); flash('Sozlamalar saqlandi'); await loadConfig() }
+  catch (e) { flash('Xato: ' + e.message) }
 }
+function addReason() { cfgReasons.value.push({ key: '', label: '', module_set: 'common', module_title: 'Модули', required: false }) }
+function delReason(i) { cfgReasons.value.splice(i, 1) }
 
 // --- filtrlangan suhbatli qo'ng'iroqlar ---
 const filtered = computed(() => calls.value.filter((c) => {
@@ -155,9 +174,11 @@ function openFill(c) {
 }
 function closeFill() { fillActive.value = null }
 async function submitFill() {
-  for (const q of activeQuestions.value) {
-    if (q.required && !answers.value[q.id]) { flash(`"${q.label}" majburiy`); return }
-  }
+  const a = answers.value
+  if (!a.reason_key) { flash('Причина tanlang'); return }
+  if (!a.status) { flash('Статус tanlang'); return }
+  const reason = (config.value.reasons || []).find((r) => r.key === a.reason_key)
+  if (reason && reason.required && !(a.comment || '').trim()) { flash('Комментарий majburiy'); return }
   saving.value = true
   try {
     await api.surveySubmit({ call_uuid: fillActive.value.uuid, operator_ext: opExt(fillActive.value), answers: answers.value })
@@ -168,26 +189,11 @@ async function submitFill() {
   finally { saving.value = false }
 }
 
-// --- sozlamalar (savol builder) ---
-async function addQuestion() {
-  if (!nf.value.label.trim()) { flash('Savol matni kerak'); return }
-  try {
-    const options = nf.value.type === 'choice'
-      ? nf.value.options.split(',').map((s) => s.trim()).filter(Boolean) : []
-    await api.qCreate({ label: nf.value.label.trim(), type: nf.value.type, options, required: nf.value.required, position: questions.value.length })
-    nf.value = { label: '', type: 'text', options: '', required: false }
-    await Promise.all([loadQuestions(), loadActive()])
-  } catch (e) { flash('Xato: ' + e.message) }
-}
-async function toggleQ(q) { try { await api.qUpdate(q.id, { active: !q.active }); await Promise.all([loadQuestions(), loadActive()]) } catch (e) { flash(e.message) } }
-async function delQ(q) { try { await api.qDelete(q.id); await Promise.all([loadQuestions(), loadActive()]) } catch (e) { flash(e.message) } }
-
-const TYPES = { text: 'Matn', choice: 'Tanlov', rating: 'Reyting', yesno: 'Ha/Yo\'q' }
 const companies = COMPANIES
 
 onMounted(() => {
   applyPreset('week')   // fromInput/toInput + loadReport
-  loadQuestions(); loadActive()
+  loadConfig()
 })
 </script>
 
@@ -269,7 +275,7 @@ onMounted(() => {
       <div class="card tbl-wrap">
         <table class="tbl">
           <thead><tr>
-            <th>Sana</th><th>Kanal</th><th>Klient</th><th>Operator</th><th class="ta-c">Yo'nalish</th><th class="ta-r">Suhbat</th><th class="ta-r">Amal</th>
+            <th>Sana</th><th>Kanal</th><th>Klient</th><th>Operator</th><th class="ta-c">Yo'nalish</th><th class="ta-r">Suhbat</th><th>Audio</th><th class="ta-r">Amal</th>
           </tr></thead>
           <tbody>
             <tr v-for="c in pagedCalls" :key="c.uuid">
@@ -286,33 +292,53 @@ onMounted(() => {
                 <span class="dir" :class="c.direction === 'outbound' ? 'out' : 'in'">{{ c.direction === 'outbound' ? 'Chiq.' : 'Kir.' }}</span>
               </td>
               <td class="ta-r mono">{{ fmtDuration(c.user_talk_time) }}</td>
+              <td><audio class="rec" controls preload="none" :src="api.recordingUrl(c.uuid)"></audio></td>
               <td class="ta-r"><button class="fill-btn" @click="openFill(c)">To'ldirish</button></td>
             </tr>
-            <tr v-if="!pagedCalls.length"><td colspan="7" class="empty">Anketasiz qo'ng'iroq yo'q 🎉</td></tr>
+            <tr v-if="!pagedCalls.length"><td colspan="8" class="empty">Anketasiz qo'ng'iroq yo'q 🎉</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- ================= SOZLAMALAR ================= -->
-    <div v-else>
-      <form class="card qform" @submit.prevent="addQuestion">
-        <input v-model="nf.label" placeholder="Savol matni" class="grow" />
-        <select v-model="nf.type"><option v-for="(l,k) in TYPES" :key="k" :value="k">{{ l }}</option></select>
-        <input v-if="nf.type === 'choice'" v-model="nf.options" placeholder="variantlar: ha, yo'q, balki" class="grow" />
-        <label class="req"><input type="checkbox" v-model="nf.required" /> majburiy</label>
-        <button type="submit">+ Qo'shish</button>
-      </form>
-      <div class="card qlist">
-        <div v-for="q in questions" :key="q.id" class="q" :class="{ off: !q.active }">
-          <span class="q__type">{{ TYPES[q.type] }}</span>
-          <span class="q__label">{{ q.label }}<span v-if="q.required" class="q__req">*</span></span>
-          <span class="q__opts" v-if="q.type==='choice'">{{ (Array.isArray(q.options)?q.options:JSON.parse(q.options||'[]')).join(' · ') }}</span>
-          <button class="q__btn" @click="toggleQ(q)">{{ q.active ? 'Yashirish' : 'Yoqish' }}</button>
-          <button class="q__btn del" @click="delQ(q)">×</button>
+    <!-- ================= SOZLAMALAR (anketa konfiguratsiyasi) ================= -->
+    <div v-else class="cfg">
+      <div class="cfg__grid">
+        <div class="card cfg__box">
+          <h3>Модули (умумий)</h3>
+          <p class="cfg__hint">Har satr — bitta modul</p>
+          <textarea v-model="cfgText.common_modules" rows="10"></textarea>
         </div>
-        <div v-if="!questions.length" class="empty">Savol qo'shilmagan</div>
+        <div class="card cfg__box">
+          <h3>Оплата (payment)</h3>
+          <p class="cfg__hint">"Вопрос по оплате" uchun mavzular</p>
+          <textarea v-model="cfgText.payment_topics" rows="10"></textarea>
+        </div>
+        <div class="card cfg__box">
+          <h3>Статусы</h3>
+          <p class="cfg__hint">Har satr — bitta status</p>
+          <textarea v-model="cfgText.statuses" rows="10"></textarea>
+        </div>
       </div>
+
+      <div class="card cfg__reasons">
+        <div class="cfg__rhead"><h3>Причины обращения</h3><button class="cfg__add" @click="addReason">+ Sabab</button></div>
+        <div v-for="(r, i) in cfgReasons" :key="i" class="rrow">
+          <input v-model="r.key" placeholder="key (bug)" class="rkey" />
+          <input v-model="r.label" placeholder="Нашли (label)" class="rlabel" />
+          <select v-model="r.module_set" class="rset">
+            <option value="common">Модули (умумий)</option>
+            <option value="payment">Оплата</option>
+            <option value="custom">Maxsus / yo'q</option>
+          </select>
+          <input v-model="r.module_title" placeholder="Sarlavha" class="rtitle" />
+          <label class="rreq"><input type="checkbox" v-model="r.required" /> izoh majburiy</label>
+          <button class="rdel" @click="delReason(i)">×</button>
+        </div>
+        <div v-if="!cfgReasons.length" class="empty">Sabab qo'shilmagan</div>
+      </div>
+
+      <div class="cfg__save"><button @click="saveConfig">Sozlamalarni saqlash</button></div>
     </div>
 
     <!-- TO'LDIRISH MODALI -->
@@ -323,11 +349,12 @@ onMounted(() => {
             <div class="modal__head">
               <div>
                 <h3>Anketa to'ldirish</h3>
-                <p class="mono">{{ clientNumber(fillActive) }} · #{{ opExt(fillActive) }} · {{ fmtDateTime(fillActive.start_stamp) }}</p>
+                <p class="opline">👤 <b>{{ names[opExt(fillActive)] || ('Operator ' + opExt(fillActive)) }}</b> · #{{ opExt(fillActive) }}</p>
+                <p class="mono nums">{{ clientNumber(fillActive) }} · {{ fmtDateTime(fillActive.start_stamp) }}</p>
               </div>
               <button class="modal__x" @click="closeFill">×</button>
             </div>
-            <div class="modal__body"><SurveyForm :questions="activeQuestions" v-model="answers" /></div>
+            <div class="modal__body"><AnketaForm :config="config" v-model="answers" /></div>
             <div class="modal__foot">
               <button class="btn-ghost" @click="closeFill">Bekor</button>
               <button @click="submitFill" :disabled="saving">{{ saving ? '...' : 'Saqlash' }}</button>
@@ -409,6 +436,7 @@ onMounted(() => {
 .dir.in { background: rgba(16,185,129,0.14); color: var(--green); }
 .dir.out { background: rgba(6,182,212,0.14); color: var(--accent-2); }
 .fill-btn { padding: 7px 14px; font-size: 12.5px; }
+.rec { height: 34px; width: 240px; max-width: 240px; }
 .pager { display: flex; align-items: center; gap: 10px; }
 .pager button { width: 34px; height: 34px; padding: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); }
 .pager button:hover:not(:disabled) { color: var(--text); transform: none; box-shadow: none; }
@@ -447,5 +475,28 @@ onMounted(() => {
 .modal-enter-active, .modal-leave-active { transition: opacity 0.25s; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
-@media (max-width: 1080px) { .kpis, .fl-grid { grid-template-columns: repeat(2, 1fr); } }
+.opline { font-size: 13px; margin-top: 3px; }
+.opline b { font-weight: 700; }
+.nums { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+/* Sozlamalar (config editor) */
+.cfg { display: flex; flex-direction: column; gap: 18px; }
+.cfg__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.cfg__box { padding: 18px; }
+.cfg__box h3 { font-size: 15px; font-weight: 700; }
+.cfg__hint { font-size: 11.5px; color: var(--text-faint); margin: 4px 0 10px; }
+.cfg__box textarea { width: 100%; resize: vertical; font-family: inherit; font-size: 13px; }
+.cfg__reasons { padding: 18px; }
+.cfg__rhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.cfg__rhead h3 { font-size: 15px; font-weight: 700; }
+.cfg__add { padding: 8px 14px; font-size: 12.5px; }
+.rrow { display: grid; grid-template-columns: 120px 1.5fr 160px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); }
+.rrow input, .rrow select { width: 100%; font-size: 12.5px; padding: 7px 10px; }
+.rreq { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.rdel { background: rgba(239,68,68,0.14); color: var(--red); width: 30px; height: 30px; padding: 0; border-radius: 8px; }
+.rdel:hover { transform: none; box-shadow: none; }
+.cfg__save { display: flex; justify-content: flex-end; }
+.cfg__save button { padding: 11px 22px; }
+
+@media (max-width: 1080px) { .kpis, .fl-grid, .cfg__grid { grid-template-columns: repeat(2, 1fr); } }
 </style>

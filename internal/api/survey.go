@@ -105,6 +105,44 @@ func (s *Server) handleDeleteQuestion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// ---- Anketa konfiguratsiyasi ----
+
+// GET /api/survey/config — to'ldirish formasi uchun (kirgan foydalanuvchi)
+func (s *Server) handleActiveSurveyConfig(w http.ResponseWriter, r *http.Request, _ store.User) {
+	cfg, err := s.store.GetSurveyConfig(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(cfg)
+}
+
+// GET /api/admin/survey/config — sozlash uchun (admin)
+func (s *Server) handleGetSurveyConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.store.GetSurveyConfig(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(cfg)
+}
+
+// PUT /api/admin/survey/config — konfiguratsiyani saqlash (admin)
+func (s *Server) handleSaveSurveyConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, "json noto'g'ri")
+		return
+	}
+	if err := s.store.SaveSurveyConfig(r.Context(), cfg); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // ---- Javoblar ----
 
 // POST /api/survey/responses — anketani saqlash (kirgan foydalanuvchi)

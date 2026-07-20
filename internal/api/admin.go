@@ -13,6 +13,11 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 1) Sessiya orqali admin
 		if u, ok := s.currentUser(r); ok && u.Role == "admin" {
+			name := u.Name
+			if name == "" {
+				name = u.Email
+			}
+			s.auditMutation(r, &u.ID, name)
 			next(w, r)
 			return
 		}
@@ -22,6 +27,7 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			pass = r.URL.Query().Get("admin_password")
 		}
 		if s.adminPass != "" && pass == s.adminPass {
+			s.auditMutation(r, nil, "admin (parol)")
 			next(w, r)
 			return
 		}
@@ -179,8 +185,10 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		EmployeeID *int  `json:"employee_id"`
-		Active     *bool `json:"active"`
+		EmployeeID *int    `json:"employee_id"`
+		Active     *bool   `json:"active"`
+		Name       *string `json:"name"`
+		Company    *string `json:"company"`
 	}
 	// employee_id maydoni umuman berilganini aniqlash uchun xom JSON'ni tekshiramiz
 	raw := map[string]json.RawMessage{}
@@ -196,7 +204,22 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	if v, ok := raw["active"]; ok {
 		_ = json.Unmarshal(v, &body.Active)
 	}
-	sv, err := s.store.UpdateServer(r.Context(), id, body.EmployeeID, setEmployee, body.Active)
+	if v, ok := raw["name"]; ok {
+		_ = json.Unmarshal(v, &body.Name)
+	}
+	if v, ok := raw["company"]; ok {
+		_ = json.Unmarshal(v, &body.Company)
+	}
+	var assignedAt *time.Time
+	if v, ok := raw["assigned_at"]; ok {
+		var ds string
+		if json.Unmarshal(v, &ds) == nil && ds != "" {
+			if t, err := time.Parse("2006-01-02", ds); err == nil {
+				assignedAt = &t
+			}
+		}
+	}
+	sv, err := s.store.UpdateServer(r.Context(), id, body.EmployeeID, setEmployee, body.Active, body.Name, body.Company, assignedAt)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

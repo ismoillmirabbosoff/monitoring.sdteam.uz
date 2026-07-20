@@ -25,11 +25,11 @@ const companies = COMPANIES
 
 // Status: online(green) / offline(red) / talking(blue) / ringing(amber) / dnd(orange)
 const STATUS = {
-  online:  { key: 'tv.onLine',  color: '#10b981' },
-  offline: { key: 'tv.offLine', color: '#ef4444' },
-  talking: { key: 'tv.talking', color: '#3b82f6' },
-  ringing: { key: 'tv.ringing', color: '#f59e0b' },
-  dnd:     { key: 'tv.dnd',     color: '#f97316' },
+  online:  { key: 'tv.onLine',  color: '#15803d' },
+  offline: { key: 'tv.offLine', color: '#64748b' },
+  talking: { key: 'tv.talking', color: '#1d4ed8' },
+  ringing: { key: 'tv.ringing', color: '#b45309' },
+  dnd:     { key: 'tv.dnd',     color: '#6d28d9' },
 }
 
 const operators = computed(() => {
@@ -47,6 +47,7 @@ const operators = computed(() => {
         status,
         incoming: st.incoming || 0,
         outgoing: st.outgoing || 0,
+        missed: st.missed || 0,
         unfilled: st.survey_unfilled || 0,
         servers: st.servers || 0,
       }
@@ -120,11 +121,20 @@ const columns = computed(() => COLS.map((c) => ({ ...c, ops: operators.value.fil
 const clock = computed(() => now.value.toLocaleTimeString('ru-RU'))
 const dateLabel = computed(() => now.value.toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 
+// "Liniyada" ni REAL faoliyatdan aniqlaymiz: OnlinePBX fifo flagi doim "1" qaytaradi
+// (navbatga a'zolik), shu sabab so'nggi ONLINE_WINDOW ichida qo'ng'iroq qilgan/qabul
+// qilgan operatorlarni online deb belgilaymiz. WS talking/ringing/dnd buni ustidan yozadi.
+const ONLINE_WINDOW = 20 * 60 // 20 daqiqa
+function opExtOf(c) {
+  if (c.direction === 'outbound') return isExtension(c.caller_id_number) ? c.caller_id_number : ''
+  return isExtension(c.destination_number) ? c.destination_number : ''
+}
 async function loadFifo() {
   try {
-    const r = await api.fifo()
+    const now = Math.floor(Date.now() / 1000)
+    const calls = await api.data('', now - ONLINE_WINDOW, now)
     const map = {}
-    for (const q of r.data || []) for (const u of parseFifoUsers(q.users)) map[u.ext] = u.online || map[u.ext]
+    for (const c of calls || []) { const e = opExtOf(c); if (e) map[e] = true }
     fifoOnline.value = map
   } catch {}
 }
@@ -157,7 +167,7 @@ async function initWS() {
     ws.onopen = () => {
       wsState.value = 'live'
       ws.send(JSON.stringify({ command: 'subscribe', reqId: 'tv-' + Date.now(),
-        data: { eventGroups: ['call_status', 'call_start', 'call_end', 'user_status', 'registration'] } }))
+        data: { eventGroups: ['user_registration', 'user_blf', 'user_status', 'call_status', 'call_start', 'call_end'] } }))
     }
     ws.onmessage = (ev) => { try { handleWS(JSON.parse(ev.data)) } catch {} }
     ws.onclose = () => { wsState.value = 'offline'; clearTimeout(reconnectTimer); reconnectTimer = setTimeout(initWS, 5000) }
@@ -172,25 +182,45 @@ function initials(op) {
   return String(op.ext).slice(-2)
 }
 
+// WS hodisalari (referens phone.sddev.uz mantiqiga mos):
+//   user_registration → state (register/unregister) = online/offline
+//   user_blf / user_status → status (talking/ringing/busy/dnd) = jonli holat
+//   har hodisa data.uid (extension) bo'yicha kalitlanadi.
 function handleWS(msg) {
   const d = msg?.data || msg
-  const type = msg?.event || msg?.type || d?.type
-  const st = (d?.status || '').toLowerCase()
-  const exts = []
-  for (const k of ['caller', 'callee', 'src', 'dst', 'number', 'user', 'extension', 'destination_number', 'caller_id_number'])
-    if (isExtension(d?.[k])) exts.push(String(d[k]))
-  if (!exts.length) return
+  const ev = (msg?.event || d?.event || d?.type || '').toLowerCase()
+  const st = String(d?.status || d?.state || '').toLowerCase()
+
+  // extension'ni aniqlash: avval uid/user, keyin call maydonlari
+  let ext = ''
+  for (const k of ['uid', 'user', 'extension', 'ext', 'number']) {
+    if (isExtension(d?.[k])) { ext = String(d[k]); break }
+  }
+  if (!ext) {
+    for (const k of ['caller', 'callee', 'src', 'dst', 'destination_number', 'caller_id_number']) {
+      if (isExtension(d?.[k])) { ext = String(d[k]); break }
+    }
+  }
+  if (!ext) return
+
+  // Ro'yxatdan o'tish (online/offline)
+  if (ev.includes('registration') || st.startsWith('register') || st.startsWith('unregister')) {
+    const online = !st.startsWith('unregister')
+    fifoOnline.value = { ...fifoOnline.value, [ext]: online }
+    if (!online) { const n = { ...live.value }; delete n[ext]; live.value = n }
+    if (st.startsWith('register')) { const n = { ...live.value }; delete n[ext]; live.value = n }
+  }
+
+  // Jonli holat (talking/ringing/dnd)
   const next = { ...live.value }
-  if (type === 'call_end' || st === 'hangup' || st === 'unregistered' || st === 'unregister') {
-    for (const e of exts) delete next[e]
-  } else if (st === 'dnd') {
-    for (const e of exts) next[e] = 'dnd'
-  } else if (st === 'answered' || type === 'call_status') {
-    for (const e of exts) next[e] = 'talking'
-  } else if (type === 'call_start' || st === 'ringing') {
-    for (const e of exts) next[e] = 'ringing'
-  } else if (st === 'registered' || st === 'register') {
-    for (const e of exts) delete next[e]
+  if (ev === 'call_end' || st === 'hangup' || st === 'idle' || st === 'available') {
+    delete next[ext]
+  } else if (st === 'dnd' || st === 'do_not_disturb') {
+    next[ext] = 'dnd'
+  } else if (st === 'talking' || st === 'busy' || st === 'answered' || ev === 'call_status') {
+    next[ext] = 'talking'
+  } else if (st === 'ringing' || st === 'early' || ev === 'call_start') {
+    next[ext] = 'ringing'
   }
   live.value = next
 }
@@ -281,6 +311,10 @@ onUnmounted(() => {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 8 22 2 16 2"/><line x1="16" y1="8" x2="22" y2="2"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <span>{{ cell.op.outgoing }}</span>
             </div>
+            <div class="m m--miss" :class="{ bad: cell.op.missed > 0 }" :title="t('tv.missed')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>
+              <span>{{ cell.op.missed }}</span>
+            </div>
             <div class="m m--surv" :class="{ warn: cell.op.unfilled > 0 }" :title="t('tv.unfilled')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
               <span>{{ cell.op.unfilled }}</span>
@@ -321,11 +355,11 @@ onUnmounted(() => {
 .tv__theme svg { width: 18px; height: 18px; }
 .tv__clock { font-size: 30px; font-weight: 700; letter-spacing: 0.01em; color: var(--text); }
 
-.s-online  { --c: #10b981; }
-.s-offline { --c: #f43f5e; }
-.s-talking { --c: #3b82f6; }
-.s-ringing { --c: #f59e0b; }
-.s-dnd     { --c: #f97316; }
+.s-online  { --c: #15803d; }
+.s-offline { --c: #64748b; }
+.s-talking { --c: #1d4ed8; }
+.s-ringing { --c: #b45309; }
+.s-dnd     { --c: #6d28d9; }
 
 /* Grafana uslubidagi grid toolbar */
 .tv__toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -337,37 +371,42 @@ onUnmounted(() => {
 .tv__resetbtn:hover { color: var(--text); transform: none; box-shadow: none; }
 .tv__hint { font-size: 12.5px; color: var(--text-faint); }
 
-/* Grid katakni to'ldiradigan kartalar */
+/* Grid katakni to'ldiradigan kartalar — status rangi bilan to'q bo'yalgan */
 .item {
   height: 100%; display: flex; flex-direction: column; overflow: hidden;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-  padding: 16px 18px; box-shadow: var(--shadow); transition: box-shadow 0.2s;
+  background: color-mix(in srgb, var(--c) 14%, var(--surface));
+  border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-left: 6px solid var(--c);
+  border-radius: 14px; padding: 15px 17px; box-shadow: var(--shadow); transition: box-shadow 0.2s;
 }
 .item.is-edit { cursor: move; }
 .item:hover { box-shadow: var(--shadow-lg); }
 .item__top { display: flex; align-items: center; justify-content: space-between; }
 .item__ext { font-size: 15px; color: var(--text-faint); font-weight: 500; }
 .item__dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
-.item__phone { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
-  color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 34%, transparent); flex-shrink: 0; }
-.item__phone svg { width: 16px; height: 16px; }
+.item__phone { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  color: #fff; background: var(--c); flex-shrink: 0; box-shadow: 0 2px 8px color-mix(in srgb, var(--c) 45%, transparent); }
+.item__phone svg { width: 17px; height: 17px; }
 .s-talking .item__phone, .s-ringing .item__phone, .s-online .item__phone { animation: pulse-dot 1.8s infinite; }
 .item__name { font-size: 17px; font-weight: 600; color: var(--text); margin-top: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item__st { font-size: 11.5px; color: var(--c); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px; font-weight: 600; }
-.item__metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: auto;
+.item__st { display: inline-block; align-self: flex-start; font-size: 11px; color: #fff; background: var(--c);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-top: 9px; font-weight: 700; padding: 3px 10px; border-radius: 6px; }
+.item__metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: auto;
   padding-top: 12px; border-top: 1px solid var(--border); }
 .m { display: flex; align-items: center; justify-content: center; gap: 5px;
   font-size: 14px; font-weight: 700; color: var(--text); font-family: var(--mono); }
 .m svg { width: 15px; height: 15px; flex-shrink: 0; }
 .m--in { color: var(--green, #10b981); }
 .m--out { color: var(--accent-2, #14b8c4); }
+.m--miss { color: var(--text-faint); }
+.m--miss.bad { color: #ef4444; }
 .m--surv { color: var(--text-faint); }
 .m--surv.warn { color: #f59e0b; }
 .m--srv { color: var(--text-dim); }
-.s-offline { opacity: 0.7; }
+.s-offline { opacity: 0.6; }
 .s-offline .item__name { color: var(--text-dim); }
+.s-offline .item__phone { box-shadow: none; }
 .s-talking .item__dot, .s-ringing .item__dot, .s-online .item__dot { animation: pulse-dot 1.8s infinite; }
 
 .tv__empty { text-align: center; padding: 80px; color: var(--text-faint); font-size: 18px; }

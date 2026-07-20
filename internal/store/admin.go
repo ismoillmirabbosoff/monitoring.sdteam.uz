@@ -180,8 +180,8 @@ func (s *Store) AddServer(ctx context.Context, name, company string, employeeID 
 	return sv, err
 }
 
-// UpdateServer xodim biriktirish va/yoki active holatini yangilaydi (nil — o'zgarmaydi).
-func (s *Store) UpdateServer(ctx context.Context, id int, employeeID *int, setEmployee bool, active *bool) (Server, error) {
+// UpdateServer xodim/active/nom/kompaniya/sana ni yangilaydi (nil — o'zgarmaydi).
+func (s *Store) UpdateServer(ctx context.Context, id int, employeeID *int, setEmployee bool, active *bool, name, company *string, assignedAt *time.Time) (Server, error) {
 	if setEmployee {
 		if _, err := s.pool.Exec(ctx, `UPDATE servers SET employee_id = $1 WHERE id = $2`, employeeID, id); err != nil {
 			return Server{}, err
@@ -191,6 +191,15 @@ func (s *Store) UpdateServer(ctx context.Context, id int, employeeID *int, setEm
 		if _, err := s.pool.Exec(ctx, `UPDATE servers SET active = $1 WHERE id = $2`, *active, id); err != nil {
 			return Server{}, err
 		}
+	}
+	if name != nil {
+		s.pool.Exec(ctx, `UPDATE servers SET name = $1 WHERE id = $2`, *name, id)
+	}
+	if company != nil {
+		s.pool.Exec(ctx, `UPDATE servers SET company = $1 WHERE id = $2`, *company, id)
+	}
+	if assignedAt != nil {
+		s.pool.Exec(ctx, `UPDATE servers SET assigned_at = $1 WHERE id = $2`, *assignedAt, id)
 	}
 	var sv Server
 	err := s.pool.QueryRow(ctx, `

@@ -44,6 +44,8 @@ export const api = {
   bigData: (date) => get('/api/monitoring/bigData', { date }),
   operatorTime: (date) => get('/api/monitoring/operatorTime', { date }),
   data: (gateway, from, to) => get('/api/monitoring/data', { gateway, from, to }),
+  // qo'ng'iroq yozuvi (mp3) — <audio src> uchun bevosita URL
+  recordingUrl: (uuid) => `${BASE}/api/monitoring/recording?uuid=${encodeURIComponent(uuid)}`,
 
   // auth
   authLogin: (email, password) => req('POST', '/api/auth/login', { email, password }),
@@ -63,6 +65,10 @@ export const api = {
   surveyQuestions: () => req('GET', '/api/survey/questions'),
   surveySubmit: (payload) => req('POST', '/api/survey/responses', payload),
   surveyResponses: (from, to) => get('/api/survey/responses', { from, to }),
+  // anketa konfiguratsiyasi (reason/modules/status/comment)
+  surveyConfig: () => req('GET', '/api/survey/config'),
+  qConfig: () => req('GET', '/api/admin/survey/config'),
+  qConfigSave: (cfg) => req('PUT', '/api/admin/survey/config', cfg),
   qList: () => req('GET', '/api/admin/survey/questions'),
   qCreate: (payload) => req('POST', '/api/admin/survey/questions', payload),
   qUpdate: (id, payload) => req('PATCH', `/api/admin/survey/questions/${id}`, payload),
@@ -73,6 +79,26 @@ export const api = {
   employee: (id) => adminReq('GET', `/api/admin/employees/${id}`),
   updateEmployee: (id, payload) => adminReq('PATCH', `/api/admin/employees/${id}`, payload),
   setHiddenByExt: (ext, hidden) => adminReq('PATCH', `/api/admin/employees/by-ext/${ext}`, { hidden }),
+  // mijoz baholari (otzyvlar)
+  feedbackSubmit: (payload) => req('POST', '/api/feedback', payload),
+  feedbackList: (params) => {
+    const qs = new URLSearchParams(Object.entries(params || {}).filter(([, v]) => v)).toString()
+    return adminReq('GET', '/api/admin/feedback' + (qs ? '?' + qs : ''))
+  },
+
+  // operator ballari (avtomatizatsiya)
+  scores: () => adminReq('GET', '/api/admin/scores'),
+  scoreAdd: (payload) => adminReq('POST', '/api/admin/scores', payload),
+  scoreDelete: (id) => adminReq('DELETE', `/api/admin/scores/${id}`),
+
+  // ish vaqti + audit log
+  workHours: () => adminReq('GET', '/api/admin/work-hours'),
+  workHoursSave: (rows) => adminReq('POST', '/api/admin/work-hours', rows),
+  auditLog: (params) => {
+    const qs = new URLSearchParams(Object.entries(params || {}).filter(([, v]) => v)).toString()
+    return adminReq('GET', '/api/admin/audit-log' + (qs ? '?' + qs : ''))
+  },
+
   servers: () => adminReq('GET', '/api/admin/servers'),
   addServer: (payload) => adminReq('POST', '/api/admin/servers', payload),
   updateServer: (id, payload) => adminReq('PATCH', `/api/admin/servers/${id}`, payload),

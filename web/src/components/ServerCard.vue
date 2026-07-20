@@ -1,17 +1,18 @@
 <script setup>
 import { computed } from 'vue'
 import { companyName } from '../api.js'
+import { t } from '../i18n.js'
 
 const props = defineProps({ server: Object })
 const emit = defineEmits(['open', 'remove', 'edit'])
 
 const age = computed(() => {
   const d = props.server.days
-  if (d < 1) return 'Bugun'
-  if (d < 30) return `${d} kun`
+  if (d < 1) return t('common.today')
+  if (d < 30) return `${d} ${t('admin.day')}`
   const m = Math.floor(d / 30)
   const rem = d % 30
-  return rem > 0 ? `${m} oy ${rem} kun` : `${m} oy`
+  return rem > 0 ? `${m} ${t('admin.month')} ${rem} ${t('admin.day')}` : `${m} ${t('admin.month')}`
 })
 </script>
 
@@ -21,16 +22,16 @@ const age = computed(() => {
     <div class="srv__body">
       <div class="srv__top">
         <div class="srv__name" :title="server.name">{{ server.name }}</div>
-        <button class="srv__edit" @click.stop="emit('edit', server)" title="Tahrirlash">
+        <button class="srv__edit" @click.stop="emit('edit', server)" :title="t('common.edit')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
         </button>
-        <button class="srv__x" @click.stop="emit('remove', server.id)" title="O'chirish">×</button>
+        <button class="srv__x" @click.stop="emit('remove', server.id)" :title="t('common.delete')">×</button>
       </div>
       <div class="srv__emp" v-if="server.employee_name" @click="emit('open', server.employee_id)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         {{ server.employee_name }}
       </div>
-      <div class="srv__emp srv__emp--none" v-else>Biriktirilmagan</div>
+      <div class="srv__emp srv__emp--none" v-else>{{ t('admin.unassigned') }}</div>
       <div class="srv__foot">
         <span v-if="server.company" class="srv__tag">{{ companyName(server.company) }}</span>
         <span class="srv__age mono">{{ age }}</span>

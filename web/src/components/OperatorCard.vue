@@ -1,14 +1,15 @@
 <script setup>
 import { computed } from 'vue'
 import { fmtDuration } from '../api.js'
+import { t } from '../i18n.js'
 
 const props = defineProps({ op: Object })
 
 const STATUS = {
-  talking:  { label: 'Suhbatda',       color: 'var(--blue)' },
-  ringing:  { label: 'Jiringlamoqda',  color: 'var(--amber)' },
-  online:   { label: 'Onlayn',         color: 'var(--green)' },
-  offline:  { label: 'Oflayn',         color: 'var(--gray)' },
+  talking:  { label: 'tv.talking', color: 'var(--blue)' },
+  ringing:  { label: 'tv.ringing', color: 'var(--amber)' },
+  online:   { label: 'st.online',  color: 'var(--green)' },
+  offline:  { label: 'st.offline', color: 'var(--gray)' },
 }
 
 const st = computed(() => STATUS[props.op.status] || STATUS.offline)
@@ -35,7 +36,7 @@ const total = computed(() => props.op.incoming + props.op.outgoing)
         <div class="op__meta">
           <span class="op__ext mono">#{{ op.ext }}</span>
           <span class="op__status" :style="{ color: st.color }">
-            <i :style="{ background: st.color }"></i>{{ st.label }}
+            <i :style="{ background: st.color }"></i>{{ t(st.label) }}
           </span>
         </div>
       </div>
@@ -44,20 +45,20 @@ const total = computed(() => props.op.incoming + props.op.outgoing)
     <div class="op__stats">
       <div class="op__stat op__stat--in">
         <span class="op__stat-v mono">{{ op.incoming }}</span>
-        <span class="op__stat-l">Kiruvchi</span>
+        <span class="op__stat-l">{{ t('dash.incoming') }}</span>
       </div>
       <div class="op__stat op__stat--out">
         <span class="op__stat-v mono">{{ op.outgoing }}</span>
-        <span class="op__stat-l">Chiquvchi</span>
+        <span class="op__stat-l">{{ t('dash.outgoing') }}</span>
       </div>
       <div class="op__stat op__stat--avg">
         <span class="op__stat-v mono">{{ fmtDuration(op.avgTalk) }}</span>
-        <span class="op__stat-l">O'rtacha</span>
+        <span class="op__stat-l">{{ t('common.average') }}</span>
       </div>
     </div>
 
     <div class="op__foot">
-      <span class="op__foot-l">Jami suhbat</span>
+      <span class="op__foot-l">{{ t('st.totalTalk') }}</span>
       <span class="op__foot-v mono">{{ fmtDuration(op.talk) }}</span>
     </div>
   </div>

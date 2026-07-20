@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, COMPANIES, companyName } from '../api.js'
+import { t } from '../i18n.js'
 
 const props = defineProps({ id: [String, Number] })
 const router = useRouter()
@@ -31,11 +32,11 @@ async function assignServer() {
       employee_id: Number(props.id),
       assigned_at: nf.value.assigned_at || '',
     })
-    msg.value = `"${nf.value.name}" biriktirildi`
+    msg.value = `"${nf.value.name}" ${t('emp.assigned')}`
     setTimeout(() => (msg.value = ''), 3000)
     showForm.value = false
     await reload()
-  } catch (e) { msg.value = 'Xato: ' + e.message }
+  } catch (e) { msg.value = t('common.errorPrefix') + e.message }
 }
 
 async function reload() {
@@ -45,13 +46,13 @@ async function reload() {
 }
 
 function fmtAge(days) {
-  if (days < 1) return 'Bugun boshlandi'
-  if (days < 30) return `${days} kun`
+  if (days < 1) return t('emp.startedToday')
+  if (days < 30) return `${days} ${t('admin.day')}`
   const m = Math.floor(days / 30)
   const rem = days % 30
-  return rem > 0 ? `${m} oy ${rem} kun` : `${m} oy`
+  return rem > 0 ? `${m} ${t('admin.month')} ${rem} ${t('admin.day')}` : `${m} ${t('admin.month')}`
 }
-function colLabel(c) { return c >= 3 ? '3-oy+' : `${c}-oy` }
+function colLabel(c) { return c >= 3 ? t('admin.col3') : `${c}-${t('admin.month')}` }
 
 const totalDays = computed(() => servers.value.reduce((a, s) => a + s.days, 0))
 const activeCount = computed(() => servers.value.length)
@@ -60,16 +61,16 @@ onMounted(async () => {
   try {
     await reload()
   } catch (e) {
-    error.value = e.message === '401' ? 'Avtorizatsiya kerak' : 'Xodim topilmadi'
+    error.value = e.message === '401' ? t('emp.authRequired') : t('emp.notFound')
   } finally { loading.value = false }
 })
 </script>
 
 <template>
   <div class="ed">
-    <RouterLink to="/admin" class="back">← Orqaga</RouterLink>
+    <RouterLink to="/admin" class="back">← {{ t('common.back') }}</RouterLink>
 
-    <div v-if="loading" class="loading"><i class="spin"></i> Yuklanmoqda…</div>
+    <div v-if="loading" class="loading"><i class="spin"></i> {{ t('common.loading') }}</div>
     <div v-else-if="error" class="banner">{{ error }}</div>
 
     <template v-else-if="employee">
@@ -81,17 +82,17 @@ onMounted(async () => {
           <div class="hero__meta">
             <span v-if="employee.ext" class="mono">#{{ employee.ext }}</span>
             <span v-if="employee.company" class="tag" :class="employee.company">{{ companyName(employee.company) }}</span>
-            <span class="tag-src">{{ employee.source === 'operator' ? 'Operator' : 'Qo\'lda qo\'shilgan' }}</span>
+            <span class="tag-src">{{ employee.source === 'operator' ? t('role.operator') : t('emp.manualAdded') }}</span>
           </div>
         </div>
         <div class="hero__stats">
           <div class="hero__stat">
             <span class="mono">{{ activeCount }}</span>
-            <small>Hozir ishlayotgan serverlar</small>
+            <small>{{ t('emp.activeServers') }}</small>
           </div>
           <div class="hero__stat">
-            <span class="mono">{{ Math.floor(totalDays/30) }}<em>oy</em></span>
-            <small>Umumiy ish staji</small>
+            <span class="mono">{{ Math.floor(totalDays/30) }}<em>{{ t('admin.month') }}</em></span>
+            <small>{{ t('emp.totalTenure') }}</small>
           </div>
         </div>
       </div>
@@ -100,10 +101,10 @@ onMounted(async () => {
 
       <!-- Servers -->
       <div class="srv-head">
-        <h2 class="section-title">Biriktirilgan serverlar <span class="count">{{ servers.length }}</span></h2>
+        <h2 class="section-title">{{ t('emp.assignedServers') }} <span class="count">{{ servers.length }}</span></h2>
         <button class="btn-ghost btn-sm" @click="toggleForm">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-          {{ showForm ? 'Yopish' : 'Server biriktirish' }}
+          {{ showForm ? t('common.close') : t('emp.assignServer') }}
         </button>
       </div>
 
@@ -111,26 +112,26 @@ onMounted(async () => {
       <Transition name="page">
         <form v-if="showForm" class="assign card" @submit.prevent="assignServer">
           <label class="field">
-            <span>Server nomi</span>
-            <input v-model="nf.name" placeholder="masalan: api.salesdoc.io" autofocus />
+            <span>{{ t('admin.serverName') }}</span>
+            <input v-model="nf.name" :placeholder="t('emp.serverNameExample')" autofocus />
           </label>
           <label class="field">
-            <span>Kompaniya</span>
+            <span>{{ t('admin.company') }}</span>
             <select v-model="nf.company">
               <option v-for="c in companiesAll" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </label>
           <label class="field">
-            <span>Ish boshlangan sana</span>
+            <span>{{ t('admin.startDate') }}</span>
             <input v-model="nf.assigned_at" type="date" />
           </label>
-          <button type="submit">+ Biriktirish</button>
+          <button type="submit">{{ t('emp.assign') }}</button>
         </form>
       </Transition>
 
       <div v-if="!servers.length && !showForm" class="empty card">
-        <p>Hali server biriktirilmagan</p>
-        <button @click="toggleForm">+ Yangi server qo'shish</button>
+        <p>{{ t('emp.noServers') }}</p>
+        <button @click="toggleForm">{{ t('emp.addNewServer') }}</button>
       </div>
       <div v-else-if="servers.length" class="srv-list">
         <div v-for="(s, i) in servers" :key="s.id" class="row card" :style="{ animationDelay: i*50+'ms' }">
@@ -141,11 +142,11 @@ onMounted(async () => {
           </div>
           <div class="row__col">
             <span class="row__col-badge">{{ colLabel(s.column) }}</span>
-            <small>{{ s.column }}-kalonka</small>
+            <small>{{ s.column }}-{{ t('admin.column') }}</small>
           </div>
           <div class="row__dur">
             <span class="mono">{{ fmtAge(s.days) }}</span>
-            <small>ishlamoqda</small>
+            <small>{{ t('emp.working') }}</small>
           </div>
           <!-- progress: nechta kalonka (oy) -->
           <div class="row__months">

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,9 @@ func sessionToken(r *http.Request) string {
 func clientIP(r *http.Request) string {
 	if f := r.Header.Get("X-Forwarded-For"); f != "" {
 		return strings.TrimSpace(strings.Split(f, ",")[0])
+	}
+	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return ip // portni olib tashlaymiz (rate limit bir IP bo'yicha ishlashi uchun)
 	}
 	return r.RemoteAddr
 }

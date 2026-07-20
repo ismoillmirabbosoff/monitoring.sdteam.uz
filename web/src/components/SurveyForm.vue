@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import { t } from '../i18n.js'
 
 const props = defineProps({
   questions: { type: Array, default: () => [] },
@@ -21,11 +22,11 @@ function opts(q) {
     <div v-for="q in questions" :key="q.id" class="sf__q">
       <label class="sf__label">{{ q.label }} <span v-if="q.required" class="sf__req">*</span></label>
 
-      <input v-if="q.type === 'text'" v-model="answers[q.id]" placeholder="Javob..." class="sf__input" />
+      <input v-if="q.type === 'text'" v-model="answers[q.id]" :placeholder="t('surveyForm.answer')" class="sf__input" />
 
       <div v-else-if="q.type === 'yesno'" class="sf__chips">
-        <button type="button" class="sf__chip" :class="{ on: answers[q.id] === 'Ha' }" @click="answers[q.id] = 'Ha'">Ha</button>
-        <button type="button" class="sf__chip no" :class="{ on: answers[q.id] === 'Yo\'q' }" @click="answers[q.id] = 'Yo\'q'">Yo'q</button>
+        <button type="button" class="sf__chip" :class="{ on: answers[q.id] === 'Ha' }" @click="answers[q.id] = 'Ha'">{{ t('surveyForm.yes') }}</button>
+        <button type="button" class="sf__chip no" :class="{ on: answers[q.id] === 'Yo\'q' }" @click="answers[q.id] = 'Yo\'q'">{{ t('surveyForm.no') }}</button>
       </div>
 
       <div v-else-if="q.type === 'rating'" class="sf__stars">
@@ -38,7 +39,7 @@ function opts(q) {
                 @click="answers[q.id] = o">{{ o }}</button>
       </div>
     </div>
-    <div v-if="!questions.length" class="sf__empty">Anketa savollari sozlanmagan</div>
+    <div v-if="!questions.length" class="sf__empty">{{ t('surveyForm.noQuestions') }}</div>
   </div>
 </template>
 

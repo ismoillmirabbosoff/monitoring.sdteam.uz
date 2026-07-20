@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { api, isExtension, todayStr, fmtDuration, fmtTime, COMPANIES, companyForGateway, companyForQueue } from '../api.js'
 import AnketaForm from '../components/AnketaForm.vue'
+import { t } from '../i18n.js'
 
 const tab = ref('report')
 const calls = ref([])
@@ -89,7 +90,7 @@ async function loadReport() {
     responses.value = new Set(rs.map((r) => r.call_uuid))
     calls.value = cs.filter((c) => (c.user_talk_time || 0) > 0 && opExt(c))  // faqat suhbatli + operatorli
     page.value = 1
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -103,7 +104,7 @@ async function loadConfig() {
       statuses: (c.statuses || []).join('\n'),
     }
     cfgReasons.value = JSON.parse(JSON.stringify(c.reasons || []))
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 function lines(s) { return String(s || '').split('\n').map((x) => x.trim()).filter(Boolean) }
 async function saveConfig() {
@@ -113,8 +114,8 @@ async function saveConfig() {
     statuses: lines(cfgText.value.statuses),
     reasons: cfgReasons.value.filter((r) => r.key && r.label),
   }
-  try { await api.qConfigSave(payload); flash('Sozlamalar saqlandi'); await loadConfig() }
-  catch (e) { flash('Xato: ' + e.message) }
+  try { await api.qConfigSave(payload); flash(t('surveyAdmin.settingsSaved')); await loadConfig() }
+  catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 function addReason() { cfgReasons.value.push({ key: '', label: '', module_set: 'common', module_title: 'Модули', required: false }) }
 function delReason(i) { cfgReasons.value.splice(i, 1) }
@@ -175,17 +176,17 @@ function openFill(c) {
 function closeFill() { fillActive.value = null }
 async function submitFill() {
   const a = answers.value
-  if (!a.reason_key) { flash('Причина tanlang'); return }
-  if (!a.status) { flash('Статус tanlang'); return }
+  if (!a.reason_key) { flash(t('survey.pickReason')); return }
+  if (!a.status) { flash(t('survey.pickStatus')); return }
   const reason = (config.value.reasons || []).find((r) => r.key === a.reason_key)
-  if (reason && reason.required && !(a.comment || '').trim()) { flash('Комментарий majburiy'); return }
+  if (reason && reason.required && !(a.comment || '').trim()) { flash(t('survey.commentRequired')); return }
   saving.value = true
   try {
     await api.surveySubmit({ call_uuid: fillActive.value.uuid, operator_ext: opExt(fillActive.value), answers: answers.value })
     responses.value = new Set([...responses.value, fillActive.value.uuid])
-    flash('Anketa saqlandi')
+    flash(t('survey.saved'))
     closeFill()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { saving.value = false }
 }
 
@@ -200,72 +201,72 @@ onMounted(() => {
 <template>
   <div class="sa">
     <div class="top">
-      <div><h1>Anketa hisoboti</h1><p>Anketasiz qo'ng'iroqlar · qoplanish · sozlamalar</p></div>
+      <div><h1>{{ t('nav.surveyReport') }}</h1><p>{{ t('surveyAdmin.subtitle') }}</p></div>
     </div>
     <Teleport to="body"><Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition></Teleport>
 
     <div class="tabs">
-      <button :class="{ active: tab === 'report' }" @click="tab = 'report'">Hisobot</button>
-      <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">Sozlamalar</button>
+      <button :class="{ active: tab === 'report' }" @click="tab = 'report'">{{ t('surveyAdmin.tabReport') }}</button>
+      <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">{{ t('common.settings') }}</button>
     </div>
 
     <!-- ================= HISOBOT ================= -->
     <div v-if="tab === 'report'">
       <!-- KPI -->
       <div class="kpis">
-        <div class="kpi card"><div class="kpi__ico warn">!</div><div><div class="kpi__v">{{ stats.missing }}</div><div class="kpi__l">Anketasiz qo'ng'iroqlar</div></div></div>
-        <div class="kpi card"><div class="kpi__ico ok">✓</div><div><div class="kpi__v" style="color:var(--green)">{{ stats.done }}</div><div class="kpi__l">Anketa to'ldirilgan</div></div></div>
-        <div class="kpi card"><div class="kpi__ico blue">☎</div><div><div class="kpi__v">{{ stats.total }}</div><div class="kpi__l">Suhbatli qo'ng'iroqlar</div></div></div>
-        <div class="kpi card"><div class="kpi__ico acc">%</div><div><div class="kpi__v" style="color:var(--accent)">{{ stats.coverage }}%</div><div class="kpi__l">Anketa qoplanishi</div></div></div>
+        <div class="kpi card"><div class="kpi__ico warn">!</div><div><div class="kpi__v">{{ stats.missing }}</div><div class="kpi__l">{{ t('surveyAdmin.unfilledCalls') }}</div></div></div>
+        <div class="kpi card"><div class="kpi__ico ok">✓</div><div><div class="kpi__v" style="color:var(--green)">{{ stats.done }}</div><div class="kpi__l">{{ t('st.surveys') }}</div></div></div>
+        <div class="kpi card"><div class="kpi__ico blue">☎</div><div><div class="kpi__v">{{ stats.total }}</div><div class="kpi__l">{{ t('surveyAdmin.talkedCalls') }}</div></div></div>
+        <div class="kpi card"><div class="kpi__ico acc">%</div><div><div class="kpi__v" style="color:var(--accent)">{{ stats.coverage }}%</div><div class="kpi__l">{{ t('survey.coverage') }}</div></div></div>
       </div>
 
       <!-- FILTRLAR -->
       <div class="card filters">
         <div class="fl-presets">
-          <button v-for="p in [['today','Bugun'],['yesterday','Kecha'],['week','Hafta'],['month','Oy']]" :key="p[0]"
-                  class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ p[1] }}</button>
+          <button v-for="p in [['today','common.today'],['yesterday','common.yesterday'],['week','common.week'],['month','common.month']]" :key="p[0]"
+                  class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ t(p[1]) }}</button>
           <span class="fl-range mono">{{ rangeLabel }}</span>
         </div>
         <div class="fl-grid">
-          <label class="fld"><span>Dan</span><input type="date" v-model="fromInput" @change="preset='custom'; loadReport()" /></label>
-          <label class="fld"><span>Gacha</span><input type="date" v-model="toInput" @change="preset='custom'; loadReport()" /></label>
-          <label class="fld"><span>Operator</span>
-            <select v-model="fOperator"><option value="">Hammasi</option>
+          <label class="fld"><span>{{ t('common.from') }}</span><input type="date" v-model="fromInput" @change="preset='custom'; loadReport()" /></label>
+          <label class="fld"><span>{{ t('common.to') }}</span><input type="date" v-model="toInput" @change="preset='custom'; loadReport()" /></label>
+          <label class="fld"><span>{{ t('common.operator') }}</span>
+            <select v-model="fOperator"><option value="">{{ t('common.all') }}</option>
               <option v-for="o in operatorOptions" :key="o.ext" :value="o.ext">{{ o.name }} · #{{ o.ext }}</option>
             </select>
           </label>
-          <label class="fld"><span>Kanal</span>
-            <select v-model="fCompany"><option value="">Hammasi</option>
+          <label class="fld"><span>{{ t('common.channel') }}</span>
+            <select v-model="fCompany"><option value="">{{ t('common.all') }}</option>
               <option v-for="c in companies.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </label>
-          <label class="fld"><span>Yo'nalish</span>
-            <select v-model="fDirection"><option value="">Hammasi</option><option value="inbound">Kiruvchi</option><option value="outbound">Chiquvchi</option></select>
+          <label class="fld"><span>{{ t('common.direction') }}</span>
+            <select v-model="fDirection"><option value="">{{ t('common.all') }}</option><option value="inbound">{{ t('dash.incoming') }}</option><option value="outbound">{{ t('dash.outgoing') }}</option></select>
           </label>
-          <label class="fld"><span>Min. suhbat (sek)</span><input type="number" min="0" v-model="fMinTalk" placeholder="0" /></label>
-          <label class="fld"><span>Telefon</span><input v-model="fPhone" placeholder="998…" /></label>
-          <button class="fl-reset" @click="resetFilters">Tozalash</button>
+          <label class="fld"><span>{{ t('calls.minTalk') }}</span><input type="number" min="0" v-model="fMinTalk" placeholder="0" /></label>
+          <label class="fld"><span>{{ t('common.phone') }}</span><input v-model="fPhone" placeholder="998…" /></label>
+          <button class="fl-reset" @click="resetFilters">{{ t('common.reset') }}</button>
         </div>
       </div>
 
       <!-- KIM KO'P TO'LDIRMAYDI -->
-      <div class="section-h"><h2>Kim ko'p to'ldirmaydi</h2><span class="muted">tanlangan davr bo'yicha · bosing = filtrlaydi</span></div>
+      <div class="section-h"><h2>{{ t('surveyAdmin.whoMisses') }}</h2><span class="muted">{{ t('surveyAdmin.whoMissesHint') }}</span></div>
       <div v-if="loading" class="loading"><i class="spin"></i></div>
       <div v-else class="opgrid">
         <button v-for="o in byOperator" :key="o.ext" class="opc" :class="{ active: fOperator === o.ext }" @click="selectOperator(o.ext)">
           <div class="opc__av">{{ (names[o.ext] || o.ext).slice(0,2).toUpperCase() }}</div>
           <div class="opc__info">
             <div class="opc__name">{{ names[o.ext] || ('Operator ' + o.ext) }}</div>
-            <div class="opc__meta"><b>{{ o.missing }}</b> anketasiz · #{{ o.ext }}</div>
+            <div class="opc__meta"><b>{{ o.missing }}</b> {{ t('surveyAdmin.withoutSurvey') }} · #{{ o.ext }}</div>
           </div>
           <svg class="opc__arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
         </button>
-        <div v-if="!byOperator.length" class="empty">Hammasi to'ldirilgan 🎉</div>
+        <div v-if="!byOperator.length" class="empty">{{ t('surveyAdmin.allFilled') }} 🎉</div>
       </div>
 
       <!-- QO'NG'IROQLAR RO'YXATI -->
       <div class="section-h">
-        <h2>Anketasiz qo'ng'iroqlar <span class="count">{{ unfilledCalls.length }}</span></h2>
+        <h2>{{ t('surveyAdmin.unfilledCalls') }} <span class="count">{{ unfilledCalls.length }}</span></h2>
         <div class="pager" v-if="totalPages > 1">
           <button :disabled="page<=1" @click="page--">←</button>
           <span class="mono">{{ page }} / {{ totalPages }}</span>
@@ -275,7 +276,7 @@ onMounted(() => {
       <div class="card tbl-wrap">
         <table class="tbl">
           <thead><tr>
-            <th>Sana</th><th>Kanal</th><th>Klient</th><th>Operator</th><th class="ta-c">Yo'nalish</th><th class="ta-r">Suhbat</th><th>Audio</th><th class="ta-r">Amal</th>
+            <th>{{ t('common.date') }}</th><th>{{ t('common.channel') }}</th><th>{{ t('common.client') }}</th><th>{{ t('common.operator') }}</th><th class="ta-c">{{ t('common.direction') }}</th><th class="ta-r">{{ t('common.talk') }}</th><th>{{ t('common.audio') }}</th><th class="ta-r">{{ t('common.action') }}</th>
           </tr></thead>
           <tbody>
             <tr v-for="c in pagedCalls" :key="c.uuid">
@@ -289,13 +290,13 @@ onMounted(() => {
                 </div>
               </td>
               <td class="ta-c">
-                <span class="dir" :class="c.direction === 'outbound' ? 'out' : 'in'">{{ c.direction === 'outbound' ? 'Chiq.' : 'Kir.' }}</span>
+                <span class="dir" :class="c.direction === 'outbound' ? 'out' : 'in'">{{ c.direction === 'outbound' ? t('common.dirOut') : t('common.dirIn') }}</span>
               </td>
               <td class="ta-r mono">{{ fmtDuration(c.user_talk_time) }}</td>
               <td><audio class="rec" controls preload="none" :src="api.recordingUrl(c.uuid)"></audio></td>
-              <td class="ta-r"><button class="fill-btn" @click="openFill(c)">To'ldirish</button></td>
+              <td class="ta-r"><button class="fill-btn" @click="openFill(c)">{{ t('survey.fill') }}</button></td>
             </tr>
-            <tr v-if="!pagedCalls.length"><td colspan="8" class="empty">Anketasiz qo'ng'iroq yo'q 🎉</td></tr>
+            <tr v-if="!pagedCalls.length"><td colspan="8" class="empty">{{ t('surveyAdmin.noUnfilled') }} 🎉</td></tr>
           </tbody>
         </table>
       </div>
@@ -305,40 +306,40 @@ onMounted(() => {
     <div v-else class="cfg">
       <div class="cfg__grid">
         <div class="card cfg__box">
-          <h3>Модули (умумий)</h3>
-          <p class="cfg__hint">Har satr — bitta modul</p>
+          <h3>{{ t('surveyAdmin.cfgCommonModules') }}</h3>
+          <p class="cfg__hint">{{ t('surveyAdmin.oneModulePerLine') }}</p>
           <textarea v-model="cfgText.common_modules" rows="10"></textarea>
         </div>
         <div class="card cfg__box">
-          <h3>Оплата (payment)</h3>
-          <p class="cfg__hint">"Вопрос по оплате" uchun mavzular</p>
+          <h3>{{ t('surveyAdmin.cfgPayment') }}</h3>
+          <p class="cfg__hint">{{ t('surveyAdmin.paymentTopicsHint') }}</p>
           <textarea v-model="cfgText.payment_topics" rows="10"></textarea>
         </div>
         <div class="card cfg__box">
-          <h3>Статусы</h3>
-          <p class="cfg__hint">Har satr — bitta status</p>
+          <h3>{{ t('surveyAdmin.cfgStatuses') }}</h3>
+          <p class="cfg__hint">{{ t('surveyAdmin.oneStatusPerLine') }}</p>
           <textarea v-model="cfgText.statuses" rows="10"></textarea>
         </div>
       </div>
 
       <div class="card cfg__reasons">
-        <div class="cfg__rhead"><h3>Причины обращения</h3><button class="cfg__add" @click="addReason">+ Sabab</button></div>
+        <div class="cfg__rhead"><h3>{{ t('surveyAdmin.cfgReasons') }}</h3><button class="cfg__add" @click="addReason">{{ t('surveyAdmin.addReason') }}</button></div>
         <div v-for="(r, i) in cfgReasons" :key="i" class="rrow">
           <input v-model="r.key" placeholder="key (bug)" class="rkey" />
           <input v-model="r.label" placeholder="Нашли (label)" class="rlabel" />
           <select v-model="r.module_set" class="rset">
-            <option value="common">Модули (умумий)</option>
-            <option value="payment">Оплата</option>
-            <option value="custom">Maxsus / yo'q</option>
+            <option value="common">{{ t('surveyAdmin.cfgCommonModules') }}</option>
+            <option value="payment">{{ t('surveyAdmin.cfgPayment') }}</option>
+            <option value="custom">{{ t('surveyAdmin.custom') }}</option>
           </select>
-          <input v-model="r.module_title" placeholder="Sarlavha" class="rtitle" />
-          <label class="rreq"><input type="checkbox" v-model="r.required" /> izoh majburiy</label>
+          <input v-model="r.module_title" :placeholder="t('surveyAdmin.titlePlaceholder')" class="rtitle" />
+          <label class="rreq"><input type="checkbox" v-model="r.required" /> {{ t('surveyAdmin.commentRequiredLabel') }}</label>
           <button class="rdel" @click="delReason(i)">×</button>
         </div>
-        <div v-if="!cfgReasons.length" class="empty">Sabab qo'shilmagan</div>
+        <div v-if="!cfgReasons.length" class="empty">{{ t('surveyAdmin.noReasons') }}</div>
       </div>
 
-      <div class="cfg__save"><button @click="saveConfig">Sozlamalarni saqlash</button></div>
+      <div class="cfg__save"><button @click="saveConfig">{{ t('surveyAdmin.saveSettings') }}</button></div>
     </div>
 
     <!-- TO'LDIRISH MODALI -->
@@ -348,7 +349,7 @@ onMounted(() => {
           <div class="modal__card">
             <div class="modal__head">
               <div>
-                <h3>Anketa to'ldirish</h3>
+                <h3>{{ t('survey.fillTitle') }}</h3>
                 <p class="opline">👤 <b>{{ names[opExt(fillActive)] || ('Operator ' + opExt(fillActive)) }}</b> · #{{ opExt(fillActive) }}</p>
                 <p class="mono nums">{{ clientNumber(fillActive) }} · {{ fmtDateTime(fillActive.start_stamp) }}</p>
               </div>
@@ -356,8 +357,8 @@ onMounted(() => {
             </div>
             <div class="modal__body"><AnketaForm :config="config" v-model="answers" /></div>
             <div class="modal__foot">
-              <button class="btn-ghost" @click="closeFill">Bekor</button>
-              <button @click="submitFill" :disabled="saving">{{ saving ? '...' : 'Saqlash' }}</button>
+              <button class="btn-ghost" @click="closeFill">{{ t('common.cancel') }}</button>
+              <button @click="submitFill" :disabled="saving">{{ saving ? '...' : t('common.save') }}</button>
             </div>
           </div>
         </div>

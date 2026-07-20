@@ -198,11 +198,11 @@ onUnmounted(() => {
 
     <div class="tv__toolbar">
       <button class="tv__editbtn" :class="{ active: editable }" @click="editable = !editable">
-        {{ editable ? '🔓 Tahrir rejimi yoniq' : '🔒 Joylashuvni tahrirlash' }}
+        {{ editable ? '🔓 ' + t('tv.editOn') : '🔒 ' + t('tv.editLayout') }}
       </button>
       <template v-if="editable">
-        <button class="tv__resetbtn" @click="resetLayout">↺ Tartibni tiklash</button>
-        <span class="tv__hint">Kartani suring · burchakdan cho'zib kattalashtiring</span>
+        <button class="tv__resetbtn" @click="resetLayout">↺ {{ t('tv.resetLayout') }}</button>
+        <span class="tv__hint">{{ t('tv.editHint') }}</span>
       </template>
     </div>
 

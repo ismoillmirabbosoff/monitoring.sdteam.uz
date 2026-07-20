@@ -1,5 +1,6 @@
 <script setup>
 import { fmtDuration, fmtTime } from '../api.js'
+import { t } from '../i18n.js'
 
 defineProps({ calls: { type: Array, default: () => [] } })
 
@@ -24,13 +25,13 @@ function answered(c) { return (c.user_talk_time || 0) > 0 }
         </div>
         <div class="row__meta">
           <span class="row__badge" :class="answered(c) ? 'ok' : 'miss'">
-            {{ answered(c) ? fmtDuration(c.user_talk_time) : 'Javobsiz' }}
+            {{ answered(c) ? fmtDuration(c.user_talk_time) : t('calls.noAnswer') }}
           </span>
           <span class="row__time mono">{{ fmtTime(c.start_stamp) }}</span>
         </div>
       </div>
     </TransitionGroup>
-    <div v-if="!calls.length" class="empty">Bugun hali qo'ng'iroqlar yo'q</div>
+    <div v-if="!calls.length" class="empty">{{ t('feed.empty') }}</div>
   </div>
 </template>
 

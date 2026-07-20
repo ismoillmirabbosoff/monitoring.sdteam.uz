@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api, todayStr } from '../api.js'
+import { t } from '../i18n.js'
 
 const items = ref([])
 const loading = ref(true)
@@ -31,7 +32,7 @@ async function load() {
   try {
     const [from, to] = rangeUnix()
     items.value = await api.feedbackList({ from, to, score: fScore.value }) || []
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -48,32 +49,32 @@ onMounted(() => applyPreset('week'))
 
 <template>
   <div class="fa">
-    <div class="top"><div><h1>Mijoz baholari</h1><p>Qo'ng'iroq sifatini baholash (1-5)</p></div></div>
+    <div class="top"><div><h1>{{ t('nav.feedback') }}</h1><p>{{ t('feedbackAdmin.subtitle') }}</p></div></div>
     <Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition>
 
     <div class="kpis">
-      <div class="kpi card"><div class="kpi__v">{{ stats.n }}</div><div class="kpi__l">Baholar soni</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--amber)">{{ stats.avg }} ★</div><div class="kpi__l">O'rtacha baho</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ stats.promoters }}</div><div class="kpi__l">Yaxshi (4-5)</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ stats.detractors }}</div><div class="kpi__l">Yomon (1-2)</div></div>
+      <div class="kpi card"><div class="kpi__v">{{ stats.n }}</div><div class="kpi__l">{{ t('feedbackAdmin.count') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--amber)">{{ stats.avg }} ★</div><div class="kpi__l">{{ t('feedbackAdmin.avg') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ stats.promoters }}</div><div class="kpi__l">{{ t('feedbackAdmin.good') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ stats.detractors }}</div><div class="kpi__l">{{ t('feedbackAdmin.bad') }}</div></div>
     </div>
 
     <div class="card filters">
       <div class="fl-presets">
-        <button v-for="p in [['today','Bugun'],['week','Hafta'],['month','Oy']]" :key="p[0]"
-                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ p[1] }}</button>
+        <button v-for="p in [['today','common.today'],['week','common.week'],['month','common.month']]" :key="p[0]"
+                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ t(p[1]) }}</button>
       </div>
       <div class="fl-row">
-        <label class="fld"><span>Dan</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Gacha</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Baho</span><select v-model="fScore" @change="load"><option value="">Hammasi</option><option v-for="n in 5" :key="n" :value="n">{{ n }} ★</option></select></label>
+        <label class="fld"><span>{{ t('common.from') }}</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('common.to') }}</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('feedbackAdmin.score') }}</span><select v-model="fScore" @change="load"><option value="">{{ t('common.all') }}</option><option v-for="n in 5" :key="n" :value="n">{{ n }} ★</option></select></label>
       </div>
     </div>
 
     <div v-if="loading" class="loading"><i class="spin"></i></div>
     <div v-else class="card tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Vaqt</th><th>Telefon</th><th class="ta-c">Baho</th><th>Izoh</th></tr></thead>
+        <thead><tr><th>{{ t('st.time') }}</th><th>{{ t('common.phone') }}</th><th class="ta-c">{{ t('feedbackAdmin.score') }}</th><th>{{ t('survey.comment') }}</th></tr></thead>
         <tbody>
           <tr v-for="f in items" :key="f.id">
             <td class="mono dim">{{ fmt(f.created_at) }}</td>
@@ -81,7 +82,7 @@ onMounted(() => applyPreset('week'))
             <td class="ta-c"><span class="stars" :class="'s' + f.score">{{ '★'.repeat(f.score) }}{{ '☆'.repeat(5 - f.score) }}</span></td>
             <td>{{ f.comment || '—' }}</td>
           </tr>
-          <tr v-if="!items.length"><td colspan="4" class="empty">Baho yo'q</td></tr>
+          <tr v-if="!items.length"><td colspan="4" class="empty">{{ t('feedbackAdmin.noRatings') }}</td></tr>
         </tbody>
       </table>
     </div>

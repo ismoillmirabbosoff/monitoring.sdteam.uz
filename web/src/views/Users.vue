@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { api, COMPANIES, companyForQueue } from '../api.js'
 import { auth } from '../auth.js'
+import { t } from '../i18n.js'
 
 const users = ref([])
 const operators = ref([])
@@ -22,7 +23,7 @@ async function load() {
     users.value = await api.userList()
     operators.value = await api.users() // OnlinePBX operatorlari (ext->name)
     try { hidden.value = new Set((await api.hidden()) || []) } catch {}
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 // ext -> kompaniya (OnlinePBX operatorlarining tr1 navbatidan)
@@ -46,26 +47,26 @@ const filtered = computed(() => {
 
 function isHidden(u) { return !!u.ext && hidden.value.has(String(u.ext)) }
 async function toggleHide(u) {
-  if (!u.ext) { flash("Bu foydalanuvchida ext yo'q — yashirib bo'lmaydi"); return }
+  if (!u.ext) { flash(t('users.noExtHide')); return }
   const next = !isHidden(u)
   try {
     await api.setHiddenByExt(u.ext, next)
     const s = new Set(hidden.value)
     next ? s.add(String(u.ext)) : s.delete(String(u.ext))
     hidden.value = s
-    flash(`${u.name || u.ext} ${next ? 'yashirildi' : "ko'rsatildi"}`)
-  } catch (e) { flash('Xato: ' + e.message) }
+    flash(`${u.name || u.ext} ${next ? t('admin.hidden') : t('admin.shown')}`)
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 async function create() {
-  if (!nf.value.email || !nf.value.password) { flash('Email va parol kerak'); return }
+  if (!nf.value.email || !nf.value.password) { flash(t('users.emailPasswordRequired')); return }
   try {
     await api.userCreate({ ...nf.value })
-    flash('Foydalanuvchi yaratildi')
+    flash(t('users.created'))
     nf.value = { email: '', password: '', name: '', role: 'operator', ext: '' }
     showForm.value = false
     await load()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 function startEdit(u) {
@@ -77,17 +78,17 @@ async function saveEdit(u) {
     const payload = { name: ef.value.name, role: ef.value.role, ext: ef.value.ext, active: ef.value.active }
     if (ef.value.password) payload.password = ef.value.password
     await api.userUpdate(u.id, payload)
-    flash('Saqlandi')
+    flash(t('common.saved'))
     editing.value = null
     await load()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 function copyPw(pw) {
-  try { navigator.clipboard.writeText(pw); flash('Parol nusxalandi') } catch {}
+  try { navigator.clipboard.writeText(pw); flash(t('users.passwordCopied')) } catch {}
 }
 async function remove(u) {
-  if (u.id === auth.user?.id) { flash('O\'zingizni o\'chira olmaysiz'); return }
-  try { await api.userDelete(u.id); await load() } catch (e) { flash('Xato: ' + e.message) }
+  if (u.id === auth.user?.id) { flash(t('users.cannotDeleteSelf')); return }
+  try { await api.userDelete(u.id); await load() } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 onMounted(load)
@@ -97,19 +98,19 @@ onMounted(load)
   <div class="users">
     <div class="top">
       <div>
-        <h1>Hodimlar</h1>
-        <p>{{ users.length }} ta · login qila oladiganlar</p>
+        <h1>{{ t('nav.staff') }}</h1>
+        <p>{{ users.length }} · {{ t('users.canLogin') }}</p>
       </div>
       <div class="top__actions">
         <div class="cfilter">
           <button v-for="c in companies" :key="c.id" class="cfilter__btn"
                   :class="{ active: company === c.id }" @click="company = c.id"
                   :style="company === c.id ? { '--c': c.color } : {}">
-            <i v-if="c.id" :style="{ background: c.color }"></i>{{ c.id ? c.name : 'Hammasi' }}
+            <i v-if="c.id" :style="{ background: c.color }"></i>{{ c.id ? c.name : t('common.all') }}
           </button>
         </div>
-        <input v-model="search" class="search" placeholder="🔍 Ism, email yoki ext bo'yicha qidirish…" />
-        <button @click="showForm = !showForm">{{ showForm ? 'Yopish' : '+ Yangi hodim' }}</button>
+        <input v-model="search" class="search" :placeholder="t('users.searchPlaceholder')" />
+        <button @click="showForm = !showForm">{{ showForm ? t('common.close') : t('users.addStaff') }}</button>
       </div>
     </div>
 
@@ -118,24 +119,24 @@ onMounted(load)
     <Transition name="page">
       <form v-if="showForm" class="card cform" @submit.prevent="create">
         <label class="fld"><span>Email</span><input v-model="nf.email" type="email" placeholder="operator@salesdoc.io" /></label>
-        <label class="fld"><span>Parol</span><input v-model="nf.password" type="text" placeholder="boshlang'ich parol" /></label>
-        <label class="fld"><span>Ism</span><input v-model="nf.name" placeholder="To'liq ism" /></label>
-        <label class="fld"><span>Rol</span>
-          <select v-model="nf.role"><option value="operator">Operator</option><option value="admin">Admin</option></select>
+        <label class="fld"><span>{{ t('users.password') }}</span><input v-model="nf.password" type="text" :placeholder="t('users.initialPassword')" /></label>
+        <label class="fld"><span>{{ t('st.name') }}</span><input v-model="nf.name" :placeholder="t('users.fullName')" /></label>
+        <label class="fld"><span>{{ t('users.role') }}</span>
+          <select v-model="nf.role"><option value="operator">{{ t('role.operator') }}</option><option value="admin">{{ t('role.adminShort') }}</option></select>
         </label>
-        <label class="fld"><span>Operator (ext)</span>
+        <label class="fld"><span>{{ t('users.operatorExt') }}</span>
           <select v-model="nf.ext">
-            <option value="">— yo'q —</option>
+            <option value="">{{ t('users.noneDash') }}</option>
             <option v-for="o in operators" :key="o.num" :value="o.num">{{ o.num }} · {{ o.name }}</option>
           </select>
         </label>
-        <button type="submit">Yaratish</button>
+        <button type="submit">{{ t('common.create') }}</button>
       </form>
     </Transition>
 
     <div class="card tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Foydalanuvchi</th><th>Email</th><th>Rol</th><th>Operator</th><th>Parol</th><th class="ta-c">Holat</th><th class="ta-c">TV/Panel</th><th></th></tr></thead>
+        <thead><tr><th>{{ t('common.user') }}</th><th>Email</th><th>{{ t('users.role') }}</th><th>{{ t('common.operator') }}</th><th>{{ t('users.password') }}</th><th class="ta-c">{{ t('tv.status') }}</th><th class="ta-c">{{ t('users.tvPanel') }}</th><th></th></tr></thead>
         <tbody>
           <tr v-for="u in filtered" :key="u.id" :class="{ inactive: !u.active }">
             <td>
@@ -147,8 +148,8 @@ onMounted(load)
             </td>
             <td class="u-email">{{ u.email }}</td>
             <td>
-              <select v-if="editing === u.id" v-model="ef.role" class="mini"><option value="operator">Operator</option><option value="admin">Admin</option></select>
-              <span v-else class="role" :class="u.role">{{ u.role === 'admin' ? 'Admin' : 'Operator' }}</span>
+              <select v-if="editing === u.id" v-model="ef.role" class="mini"><option value="operator">{{ t('role.operator') }}</option><option value="admin">{{ t('role.adminShort') }}</option></select>
+              <span v-else class="role" :class="u.role">{{ u.role === 'admin' ? t('role.adminShort') : t('role.operator') }}</span>
             </td>
             <td>
               <select v-if="editing === u.id" v-model="ef.ext" class="mini">
@@ -157,24 +158,24 @@ onMounted(load)
               <span v-else class="mono">{{ u.ext || '—' }}</span>
             </td>
             <td class="u-pw">
-              <span v-if="u.initial_password" class="pw-badge mono" @click="copyPw(u.initial_password)" title="Nusxa olish">{{ u.initial_password }}</span>
+              <span v-if="u.initial_password" class="pw-badge mono" @click="copyPw(u.initial_password)" :title="t('users.copy')">{{ u.initial_password }}</span>
               <span v-else class="mono dim">—</span>
             </td>
             <td class="ta-c">
-              <label v-if="editing === u.id" class="chk"><input type="checkbox" v-model="ef.active" /> faol</label>
+              <label v-if="editing === u.id" class="chk"><input type="checkbox" v-model="ef.active" /> {{ t('users.active') }}</label>
               <span v-else class="dot" :class="{ on: u.active }"></span>
             </td>
             <td class="ta-c">
               <button class="eye" :class="{ off: isHidden(u) }" @click="toggleHide(u)" :disabled="!u.ext"
-                      :title="isHidden(u) ? 'Ko\'rsatish' : 'Yashirish (TV/Panel)'">
+                      :title="isHidden(u) ? t('admin.show') : t('users.hideTvPanel')">
                 <svg v-if="!isHidden(u)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
               </button>
             </td>
             <td class="u-act">
               <template v-if="editing === u.id">
-                <input v-model="ef.password" type="text" placeholder="yangi parol (ixt.)" class="mini pw" />
-                <button class="mini-btn" @click="saveEdit(u)">Saqlash</button>
+                <input v-model="ef.password" type="text" :placeholder="t('users.newPasswordOpt')" class="mini pw" />
+                <button class="mini-btn" @click="saveEdit(u)">{{ t('common.save') }}</button>
                 <button class="mini-btn ghost" @click="editing = null">×</button>
               </template>
               <template v-else>

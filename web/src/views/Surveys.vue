@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api, isExtension, fmtDuration, fmtTime, todayStr } from '../api.js'
 import { auth } from '../auth.js'
 import AnketaForm from '../components/AnketaForm.vue'
+import { t } from '../i18n.js'
 
 const calls = ref([])
 const responded = ref(new Map()) // call_uuid -> response
@@ -52,7 +53,7 @@ async function load() {
     let list = cs.filter((c) => (c.user_talk_time || 0) > 0 && opExt(c))
     if (!auth.isAdmin && auth.user?.ext) list = list.filter((c) => opExt(c) === auth.user.ext)
     calls.value = list.sort((a, b) => b.start_stamp - a.start_stamp)
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -77,17 +78,17 @@ function close() { active.value = null }
 
 async function submit() {
   const a = answers.value
-  if (!a.reason_key) { flash('Причина обращения tanlang'); return }
-  if (!a.status) { flash('Статус tanlang'); return }
+  if (!a.reason_key) { flash(t('survey.pickReason')); return }
+  if (!a.status) { flash(t('survey.pickStatus')); return }
   const reason = (config.value.reasons || []).find((r) => r.key === a.reason_key)
-  if (reason && reason.required && !(a.comment || '').trim()) { flash('Комментарий majburiy'); return }
+  if (reason && reason.required && !(a.comment || '').trim()) { flash(t('survey.commentRequired')); return }
   saving.value = true
   try {
     await api.surveySubmit({ call_uuid: active.value.uuid, operator_ext: opExt(active.value), answers: answers.value })
-    flash('Anketa saqlandi')
+    flash(t('survey.saved'))
     close()
     await load()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { saving.value = false }
 }
 
@@ -98,8 +99,8 @@ onMounted(load)
   <div class="surv">
     <div class="top">
       <div>
-        <h1>Anketa</h1>
-        <p>{{ auth.isAdmin ? 'Barcha operatorlar' : 'Mening qo\'ng\'iroqlarim' }} · qoplanish {{ coverage }}%</p>
+        <h1>{{ t('nav.survey') }}</h1>
+        <p>{{ auth.isAdmin ? t('survey.allOperators') : t('survey.myCalls') }} · {{ t('survey.coverageWord') }} {{ coverage }}%</p>
       </div>
       <input type="date" v-model="day" @change="load" />
     </div>
@@ -107,12 +108,12 @@ onMounted(load)
     <Teleport to="body"><Transition name="modal"><div v-if="msg" class="toast">{{ msg }}</div></Transition></Teleport>
 
     <div class="tabs">
-      <button :class="{ active: tab === 'todo' }" @click="tab = 'todo'">Anketasiz <b>{{ counts.todo }}</b></button>
-      <button :class="{ active: tab === 'done' }" @click="tab = 'done'">To'ldirilgan <b>{{ counts.done }}</b></button>
-      <button :class="{ active: tab === 'all' }" @click="tab = 'all'">Hammasi <b>{{ counts.all }}</b></button>
+      <button :class="{ active: tab === 'todo' }" @click="tab = 'todo'">{{ t('survey.tabTodo') }} <b>{{ counts.todo }}</b></button>
+      <button :class="{ active: tab === 'done' }" @click="tab = 'done'">{{ t('survey.filled') }} <b>{{ counts.done }}</b></button>
+      <button :class="{ active: tab === 'all' }" @click="tab = 'all'">{{ t('common.all') }} <b>{{ counts.all }}</b></button>
     </div>
 
-    <div v-if="loading" class="loading"><i class="spin"></i> Yuklanmoqda…</div>
+    <div v-if="loading" class="loading"><i class="spin"></i> {{ t('common.loading') }}</div>
     <div v-else class="card list">
       <div v-for="c in filtered" :key="c.uuid" class="row" :class="{ done: responded.has(c.uuid) }">
         <div class="row__dir" :class="c.direction === 'outbound' ? 'out' : 'in'">
@@ -123,10 +124,10 @@ onMounted(load)
           <div class="row__num mono">{{ c.caller_id_number }} → {{ c.destination_number }}</div>
           <div class="row__meta"><b>{{ opName(c) }}</b> · #{{ opExt(c) }} · {{ fmtDuration(c.user_talk_time) }} · {{ fmtTime(c.start_stamp) }}</div>
         </div>
-        <button v-if="responded.has(c.uuid)" class="row__btn done-btn" @click="openFill(c)">✓ Ko'rish</button>
-        <button v-else class="row__btn" @click="openFill(c)">To'ldirish</button>
+        <button v-if="responded.has(c.uuid)" class="row__btn done-btn" @click="openFill(c)">✓ {{ t('survey.view') }}</button>
+        <button v-else class="row__btn" @click="openFill(c)">{{ t('survey.fill') }}</button>
       </div>
-      <div v-if="!filtered.length" class="empty">{{ tab === 'todo' ? 'Barcha anketalar to\'ldirilgan 🎉' : 'Yozuv yo\'q' }}</div>
+      <div v-if="!filtered.length" class="empty">{{ tab === 'todo' ? t('survey.allFilled') + ' 🎉' : t('common.noRecords') }}</div>
     </div>
 
     <!-- Modal (Teleport -> body, transform-containing-block muammosidan qochish) -->
@@ -141,7 +142,7 @@ onMounted(load)
                   <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17M7 17h8M7 17V9"/></svg>
                 </div>
                 <div>
-                  <h3>Anketa to'ldirish</h3>
+                  <h3>{{ t('survey.fillTitle') }}</h3>
                   <p class="opline">👤 <b>{{ opName(active) }}</b> · #{{ opExt(active) }}</p>
                   <p class="mono nums">{{ active.caller_id_number }} → {{ active.destination_number }}</p>
                 </div>
@@ -152,8 +153,8 @@ onMounted(load)
               <AnketaForm :config="config" v-model="answers" />
             </div>
             <div class="modal__foot">
-              <button class="btn-ghost" @click="close">Bekor</button>
-              <button @click="submit" :disabled="saving">{{ saving ? '...' : 'Saqlash' }}</button>
+              <button class="btn-ghost" @click="close">{{ t('common.cancel') }}</button>
+              <button @click="submit" :disabled="saving">{{ saving ? '...' : t('common.save') }}</button>
             </div>
           </div>
         </div>

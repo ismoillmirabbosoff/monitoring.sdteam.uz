@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { api, COMPANIES, companyName } from '../api.js'
 import ServerCard from '../components/ServerCard.vue'
+import { t } from '../i18n.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,9 +28,9 @@ watch(() => sf.value.company, () => {
 })
 
 const columns = [
-  { col: 1, title: '1-oy', hint: '0–1 oy ishlamoqda' },
-  { col: 2, title: '2-oy', hint: '1–2 oy ishlamoqda' },
-  { col: 3, title: '3-oy+', hint: '2 oydan ortiq' },
+  { col: 1, title: 'admin.col1', hint: 'admin.col1hint' },
+  { col: 2, title: 'admin.col2', hint: 'admin.col2hint' },
+  { col: 3, title: 'admin.col3', hint: 'admin.col3hint' },
 ]
 const byColumn = (c) => servers.value.filter((s) => s.column === c)
 const companiesAll = COMPANIES
@@ -55,14 +56,14 @@ async function addServer() {
       assigned_at: sf.value.assigned_at || '',
     }
     await api.addServer(payload)
-    flash(`Server "${payload.name}" qo'shildi`)
+    flash(`Server "${payload.name}" ${t('admin.added')}`)
     sf.value = { name: '', company: 'salesdoc', employee_id: '', assigned_at: '' }
     await loadAll()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 async function removeServer(id) {
-  try { await api.deleteServer(id); await loadAll() } catch (e) { flash('Xato: ' + e.message) }
+  try { await api.deleteServer(id); await loadAll() } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 // --- Server tahrirlash (modal) ---
@@ -82,7 +83,7 @@ function openEdit(server) {
 }
 function closeEdit() { editServer.value = null }
 async function saveEdit() {
-  if (!esf.value.name.trim()) { flash('Nom kerak'); return }
+  if (!esf.value.name.trim()) { flash(t('admin.nameRequired')); return }
   try {
     const payload = {
       name: esf.value.name.trim(),
@@ -92,10 +93,10 @@ async function saveEdit() {
     if (esf.value.assigned_at) payload.assigned_at = esf.value.assigned_at
     const r = await api.updateServer(editServer.value.id, payload)
     Object.assign(editServer.value, r)
-    flash(`"${r.name}" yangilandi`)
+    flash(`"${r.name}" ${t('admin.updated')}`)
     closeEdit()
     await loadAll()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 // --- Serverlar ro'yxati (jadval) ---
@@ -111,15 +112,15 @@ async function attachEmployee(server, value) {
     const r = await api.updateServer(server.id, { employee_id: value ? Number(value) : null })
     Object.assign(server, r)
     await loadAll()
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 async function toggleActive(server) {
   try {
     const r = await api.updateServer(server.id, { active: !server.active })
     Object.assign(server, r)
-    flash(`"${server.name}" ${r.active ? 'faollashtirildi' : 'nofaol qilindi'}`)
-  } catch (e) { flash('Xato: ' + e.message) }
+    flash(`"${server.name}" ${r.active ? t('admin.activated') : t('admin.deactivated')}`)
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 
 const sortedServers = computed(() =>
@@ -130,8 +131,8 @@ async function toggleHidden(e) {
   try {
     const r = await api.updateEmployee(e.id, { hidden: !e.hidden })
     Object.assign(e, r)
-    flash(`${e.name} ${e.hidden ? 'yashirildi' : 'ko\'rsatildi'}`)
-  } catch (err) { flash('Xato: ' + err.message) }
+    flash(`${e.name} ${e.hidden ? t('admin.hidden') : t('admin.shown')}`)
+  } catch (err) { flash(t('common.errorPrefix') + err.message) }
 }
 
 function flash(t) { msg.value = t; setTimeout(() => (msg.value = ''), 3000) }
@@ -147,8 +148,8 @@ onMounted(loadAll)
   <div class="admin">
     <div class="admin__top">
       <div>
-        <h1>Serverlar boshqaruvi</h1>
-        <p>{{ totalServers }} ta server · {{ activeServers }} faol · {{ employees.length }} ta xodim</p>
+        <h1>{{ t('admin.title') }}</h1>
+        <p>{{ totalServers }} {{ t('admin.subServers') }} · {{ activeServers }} {{ t('admin.subActive') }} · {{ employees.length }} {{ t('admin.subStaff') }}</p>
       </div>
     </div>
 
@@ -156,42 +157,42 @@ onMounted(loadAll)
 
     <!-- Yangi server registratsiyasi -->
     <form class="card form" @submit.prevent="addServer">
-      <h3><span class="form__dot" style="background:var(--accent)"></span>Yangi server qo'shish</h3>
+      <h3><span class="form__dot" style="background:var(--accent)"></span>{{ t('admin.addServer') }}</h3>
       <div class="form__grid">
         <label class="field">
-          <span>Server nomi</span>
+          <span>{{ t('admin.serverName') }}</span>
           <input v-model="sf.name" placeholder="mehkaz.salesdoc.io" />
         </label>
         <label class="field">
-          <span>Kompaniya</span>
+          <span>{{ t('admin.company') }}</span>
           <select v-model="sf.company">
             <option v-for="c in companiesAll.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
         <label class="field">
-          <span>Xodim <small>({{ availableEmployees.length }} ta {{ companyName(sf.company) }})</small></span>
+          <span>{{ t('admin.employee') }} <small>({{ availableEmployees.length }} · {{ companyName(sf.company) }})</small></span>
           <select v-model="sf.employee_id">
-            <option value="">— Xodim tanlang —</option>
+            <option value="">{{ t('admin.selectEmployee') }}</option>
             <option v-for="e in availableEmployees" :key="e.id" :value="e.id">{{ e.name }}{{ e.ext ? ` (#${e.ext})` : '' }}</option>
           </select>
         </label>
         <label class="field">
-          <span>Ish boshlangan sana <small>(ixtiyoriy)</small></span>
+          <span>{{ t('admin.startDate') }} <small>{{ t('common.optional') }}</small></span>
           <input v-model="sf.assigned_at" type="date" />
         </label>
       </div>
-      <button type="submit">+ Ro'yxatga olish</button>
+      <button type="submit">{{ t('admin.register') }}</button>
     </form>
 
     <!-- Tab toggle -->
     <div class="tabs">
       <button class="tab" :class="{ active: tab === 'board' }" @click="tab = 'board'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="18"/><rect x="10" y="3" width="6" height="12"/><rect x="17" y="3" width="4" height="8"/></svg>
-        Yosh bo'yicha
+        {{ t('admin.byAge') }}
       </button>
       <button class="tab" :class="{ active: tab === 'list' }" @click="tab = 'list'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-        Ro'yxat
+        {{ t('common.list') }}
       </button>
     </div>
 
@@ -201,8 +202,8 @@ onMounted(loadAll)
         <div class="board__head">
           <span class="board__num">{{ c.col }}</span>
           <div>
-            <div class="board__title">{{ c.title }}</div>
-            <div class="board__hint">{{ c.hint }}</div>
+            <div class="board__title">{{ t(c.title) }}</div>
+            <div class="board__hint">{{ t(c.hint) }}</div>
           </div>
           <span class="board__count">{{ byColumn(c.col).length }}</span>
         </div>
@@ -212,7 +213,7 @@ onMounted(loadAll)
                         :style="{ animationDelay: i * 50 + 'ms' }"
                         @open="openEmployee" @remove="removeServer" @edit="openEdit" />
           </TransitionGroup>
-          <div v-if="!byColumn(c.col).length" class="board__empty">Bo'sh</div>
+          <div v-if="!byColumn(c.col).length" class="board__empty">{{ t('common.empty') }}</div>
         </div>
       </div>
     </div>
@@ -222,11 +223,11 @@ onMounted(loadAll)
       <table class="tbl">
         <thead>
           <tr>
-            <th>Server</th>
-            <th>Kompaniya</th>
-            <th>Biriktirilgan xodim</th>
-            <th>Yoshi</th>
-            <th class="ta-c">Holat</th>
+            <th>{{ t('admin.server') }}</th>
+            <th>{{ t('admin.company') }}</th>
+            <th>{{ t('admin.assignedEmployee') }}</th>
+            <th>{{ t('admin.age') }}</th>
+            <th class="ta-c">{{ t('tv.status') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -241,32 +242,32 @@ onMounted(loadAll)
             <td>
               <select class="tbl__sel" :value="s.employee_id || ''"
                       @change="attachEmployee(s, $event.target.value)">
-                <option value="">— Biriktirilmagan —</option>
+                <option value="">{{ t('admin.unassignedDash') }}</option>
                 <option v-for="e in employeesFor(s.company, s.employee_id)" :key="e.id" :value="e.id">{{ e.name }}{{ e.ext ? ` (#${e.ext})` : '' }}</option>
               </select>
             </td>
-            <td><span class="mono tbl__age">{{ s.days < 1 ? 'Bugun' : s.days < 30 ? s.days + ' kun' : Math.floor(s.days/30) + ' oy' }}</span>
-              <span class="tbl__col">{{ s.column }}-kalonka</span></td>
+            <td><span class="mono tbl__age">{{ s.days < 1 ? t('common.today') : s.days < 30 ? s.days + ' ' + t('admin.day') : Math.floor(s.days/30) + ' ' + t('admin.month') }}</span>
+              <span class="tbl__col">{{ s.column }}-{{ t('admin.column') }}</span></td>
             <td class="ta-c">
-              <button class="switch" :class="{ on: s.active }" @click="toggleActive(s)" :title="s.active ? 'Faol' : 'Nofaol'">
+              <button class="switch" :class="{ on: s.active }" @click="toggleActive(s)" :title="s.active ? t('admin.active') : t('admin.inactive')">
                 <span class="switch__thumb"></span>
               </button>
-              <div class="tbl__status" :class="{ on: s.active }">{{ s.active ? 'Faol' : 'Nofaol' }}</div>
+              <div class="tbl__status" :class="{ on: s.active }">{{ s.active ? t('admin.active') : t('admin.inactive') }}</div>
             </td>
             <td class="ta-r">
-              <button class="tbl__edit" @click="openEdit(s)" title="Tahrirlash">
+              <button class="tbl__edit" @click="openEdit(s)" :title="t('common.edit')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
               </button>
-              <button class="tbl__del" @click="removeServer(s.id)" title="O'chirish">×</button>
+              <button class="tbl__del" @click="removeServer(s.id)" :title="t('common.delete')">×</button>
             </td>
           </tr>
-          <tr v-if="!servers.length"><td colspan="6" class="tbl__empty">Hali server yo'q</td></tr>
+          <tr v-if="!servers.length"><td colspan="6" class="tbl__empty">{{ t('admin.noServers') }}</td></tr>
         </tbody>
       </table>
     </div>
 
     <!-- Xodimlar -->
-    <h2 class="section-title">Xodimlar</h2>
+    <h2 class="section-title">{{ t('nav.staff') }}</h2>
     <div class="emps">
       <div v-for="e in employees" :key="e.id" class="emp card" :class="{ hidden: e.hidden }" @click="openEmployee(e.id)">
         <div class="emp__avatar">{{ e.name.slice(0,2).toUpperCase() }}</div>
@@ -275,17 +276,17 @@ onMounted(loadAll)
           <div class="emp__meta">
             <span v-if="e.ext" class="mono">#{{ e.ext }}</span>
             <span v-if="e.company" class="emp__company" :class="e.company">{{ companyName(e.company) }}</span>
-            <span class="emp__src">{{ e.source === 'operator' ? 'Operator' : 'Qo\'lda' }}</span>
+            <span class="emp__src">{{ e.source === 'operator' ? t('role.operator') : t('admin.manual') }}</span>
           </div>
         </div>
         <button class="emp__eye" :class="{ off: e.hidden }" @click.stop="toggleHidden(e)"
-                :title="e.hidden ? 'Ko\'rsatish' : 'Yashirish (dashboard/TV)'">
+                :title="e.hidden ? t('admin.show') : t('admin.hideDashboard')">
           <svg v-if="!e.hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/></svg>
         </button>
         <div class="emp__count">
           <span class="mono">{{ e.server_count }}</span>
-          <small>server</small>
+          <small>{{ t('admin.serverUnit') }}</small>
         </div>
       </div>
     </div>
@@ -296,27 +297,27 @@ onMounted(loadAll)
         <div v-if="editServer" class="smodal" @click.self="closeEdit">
           <div class="smodal__card">
             <div class="smodal__head">
-              <h3>Serverni tahrirlash</h3>
+              <h3>{{ t('admin.editServer') }}</h3>
               <button class="smodal__x" @click="closeEdit">×</button>
             </div>
             <div class="smodal__body">
-              <label class="sfld"><span>Nom</span><input v-model="esf.name" placeholder="Server nomi" /></label>
-              <label class="sfld"><span>Kompaniya</span>
+              <label class="sfld"><span>{{ t('admin.name') }}</span><input v-model="esf.name" :placeholder="t('admin.serverName')" /></label>
+              <label class="sfld"><span>{{ t('admin.company') }}</span>
                 <select v-model="esf.company">
                   <option v-for="c in companiesAll.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
               </label>
-              <label class="sfld"><span>Xodim</span>
+              <label class="sfld"><span>{{ t('admin.employee') }}</span>
                 <select v-model="esf.employee_id">
-                  <option value="">— biriktirilmagan —</option>
+                  <option value="">{{ t('admin.unassignedDash') }}</option>
                   <option v-for="e in editEmployees" :key="e.id" :value="e.id">{{ e.name }}</option>
                 </select>
               </label>
-              <label class="sfld"><span>Ish boshlagan sana</span><input type="date" v-model="esf.assigned_at" /></label>
+              <label class="sfld"><span>{{ t('admin.startDate') }}</span><input type="date" v-model="esf.assigned_at" /></label>
             </div>
             <div class="smodal__foot">
-              <button class="btn-ghost" @click="closeEdit">Bekor</button>
-              <button @click="saveEdit">Saqlash</button>
+              <button class="btn-ghost" @click="closeEdit">{{ t('common.cancel') }}</button>
+              <button @click="saveEdit">{{ t('common.save') }}</button>
             </div>
           </div>
         </div>

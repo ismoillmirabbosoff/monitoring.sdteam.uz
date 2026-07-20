@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api.js'
+import { t } from '../i18n.js'
 
 const entries = ref([])
 const actions = ref([])
@@ -16,7 +17,7 @@ async function load() {
     const r = await api.auditLog({ action: fAction.value, q: fQ.value, limit: 300 })
     entries.value = r.entries || []
     actions.value = r.actions || []
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -33,24 +34,24 @@ onMounted(load)
 <template>
   <div class="al">
     <div class="top">
-      <div><h1>Amallar jurnali</h1><p>{{ entries.length }} ta yozuv · admin o'zgartirishlari</p></div>
+      <div><h1>{{ t('nav.auditLog') }}</h1><p>{{ entries.length }} {{ t('audit.records') }} · {{ t('audit.adminChanges') }}</p></div>
     </div>
     <Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition>
 
     <div class="card filters">
-      <label class="fld"><span>Amal</span>
-        <select v-model="fAction" @change="load"><option value="">Hammasi</option><option v-for="a in actions" :key="a" :value="a">{{ a }}</option></select>
+      <label class="fld"><span>{{ t('common.action') }}</span>
+        <select v-model="fAction" @change="load"><option value="">{{ t('common.all') }}</option><option v-for="a in actions" :key="a" :value="a">{{ a }}</option></select>
       </label>
-      <label class="fld grow"><span>Qidiruv (foydalanuvchi / yo'l)</span>
-        <input v-model="fQ" @keyup.enter="load" placeholder="ism yoki /api/admin/…" />
+      <label class="fld grow"><span>{{ t('audit.searchLabel') }}</span>
+        <input v-model="fQ" @keyup.enter="load" :placeholder="t('audit.searchPlaceholder')" />
       </label>
-      <button @click="load">Qidirish</button>
+      <button @click="load">{{ t('common.search') }}</button>
     </div>
 
     <div v-if="loading" class="loading"><i class="spin"></i></div>
     <div v-else class="card tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Vaqt</th><th>Foydalanuvchi</th><th>Amal</th><th class="ta-c">Metod</th><th>Yo'l</th><th>IP</th></tr></thead>
+        <thead><tr><th>{{ t('st.time') }}</th><th>{{ t('common.user') }}</th><th>{{ t('common.action') }}</th><th class="ta-c">{{ t('audit.method') }}</th><th>{{ t('audit.path') }}</th><th>IP</th></tr></thead>
         <tbody>
           <tr v-for="e in entries" :key="e.id">
             <td class="mono dim">{{ fmt(e.created_at) }}</td>
@@ -60,7 +61,7 @@ onMounted(load)
             <td class="mono path">{{ e.path }}</td>
             <td class="mono dim">{{ e.ip }}</td>
           </tr>
-          <tr v-if="!entries.length"><td colspan="6" class="empty">Yozuv yo'q</td></tr>
+          <tr v-if="!entries.length"><td colspan="6" class="empty">{{ t('common.noRecords') }}</td></tr>
         </tbody>
       </table>
     </div>

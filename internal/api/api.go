@@ -29,13 +29,23 @@ type Server struct {
 	wsPort    string
 	webDir    string
 	adminPass string
+
+	globalLimiter   *ipLimiter // DDoS (barcha so'rovlar)
+	authLimiter     *ipLimiter // brute force (login/verify)
+	feedbackLimiter *ipLimiter // public feedback spam
 }
 
 // SetBridge jonli holat bridge'ini o'rnatadi (ixtiyoriy).
 func (s *Server) SetBridge(b *livestate.Bridge) { s.bridge = b }
 
 func NewServer(st *store.Store, pbx *onlinepbx.Client, em *email.Sender, origins []string, domain, wsPort, webDir, adminPass string) *Server {
-	return &Server{store: st, pbx: pbx, email: em, origins: origins, domain: domain, wsPort: wsPort, webDir: webDir, adminPass: adminPass}
+	return &Server{
+		store: st, pbx: pbx, email: em, origins: origins, domain: domain,
+		wsPort: wsPort, webDir: webDir, adminPass: adminPass,
+		globalLimiter:   newIPLimiter(1500, time.Minute),   // IP'ga 1500 so'rov/daqiqa
+		authLimiter:     newIPLimiter(20, 5*time.Minute),   // IP'ga 20 login urinishi/5 daqiqa
+		feedbackLimiter: newIPLimiter(30, time.Minute),     // IP'ga 30 baho/daqiqa
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -52,9 +62,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/monitoring/stats", s.handleStats)
 	mux.HandleFunc("GET /api/monitoring/recording", s.handleRecording)
 	mux.HandleFunc("GET /api/monitoring/liveState", s.handleLiveState)
-	// --- Auth (email + kod) ---
-	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
-	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
+	// --- Auth (email + kod) — brute force himoyasi (authLimiter) ---
+	mux.HandleFunc("POST /api/auth/login", s.limit(s.authLimiter, s.handleLogin))
+	mux.HandleFunc("POST /api/auth/verify", s.limit(s.authLimiter, s.handleVerify))
 	mux.HandleFunc("GET /api/auth/me", s.handleMe)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	// --- Admin: foydalanuvchilar va sessiyalar ---
@@ -76,7 +86,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/admin/survey/questions/{id}", s.requireAdmin(s.handleUpdateQuestion))
 	mux.HandleFunc("DELETE /api/admin/survey/questions/{id}", s.requireAdmin(s.handleDeleteQuestion))
 	// --- Admin (parol bilan himoyalangan) ---
-	mux.HandleFunc("POST /api/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("POST /api/admin/login", s.limit(s.authLimiter, s.handleAdminLogin))
 	mux.HandleFunc("GET /api/admin/employees", s.requireAdmin(s.handleListEmployees))
 	mux.HandleFunc("POST /api/admin/employees", s.requireAdmin(s.handleAddEmployee))
 	mux.HandleFunc("GET /api/admin/employees/{id}", s.requireAdmin(s.handleEmployeeDetail))
@@ -91,7 +101,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/work-hours", s.requireAdmin(s.handleSaveWorkHours))
 	mux.HandleFunc("GET /api/admin/audit-log", s.requireAdmin(s.handleListAudit))
 	// --- Mijoz baholari (otzyvlar) ---
-	mux.HandleFunc("POST /api/feedback", s.handleSubmitFeedback) // public
+	mux.HandleFunc("POST /api/feedback", s.limit(s.feedbackLimiter, s.handleSubmitFeedback)) // public + spam himoya
 	mux.HandleFunc("GET /api/admin/feedback", s.requireAdmin(s.handleListFeedback))
 	// --- Operator ballari (avtomatizatsiya) ---
 	mux.HandleFunc("GET /api/admin/scores", s.requireAdmin(s.handleListScores))
@@ -99,7 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/admin/scores/{id}", s.requireAdmin(s.handleDeleteScore))
 	// statik UI (SPA fallback bilan) — barcha boshqa GET so'rovlar
 	mux.HandleFunc("GET /", s.handleStatic)
-	return s.cors(mux)
+	return s.secure(s.cors(mux))
 }
 
 // handleConfig frontend uchun ochiq sozlamalar (auth talab qilmaydi).

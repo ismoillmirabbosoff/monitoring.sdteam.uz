@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { api, isExtension, todayStr, fmtDuration, COMPANIES, companyForGateway, companyForQueue } from '../api.js'
 import { auth } from '../auth.js'
 import AnketaForm from '../components/AnketaForm.vue'
+import { t } from '../i18n.js'
 
 const calls = ref([])
 const responses = ref(new Set())
@@ -86,7 +87,7 @@ async function load() {
     if (!auth.isAdmin && auth.user?.ext) list = list.filter((c) => opExt(c) === auth.user.ext)
     calls.value = list.sort((a, b) => b.start_stamp - a.start_stamp)
     page.value = 1
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -121,22 +122,22 @@ function resetFilters() { fOperator.value = ''; fCompany.value = ''; fDirection.
 
 function copyReview(c) {
   const url = `${window.location.origin}/feedback/${c.uuid}`
-  try { navigator.clipboard.writeText(url); flash('Baholash havolasi nusxalandi') } catch { flash(url) }
+  try { navigator.clipboard.writeText(url); flash(t('calls.reviewCopied')) } catch { flash(url) }
 }
 function openFill(c) { fillActive.value = c; answers.value = {} }
 function closeFill() { fillActive.value = null }
 async function submitFill() {
   const a = answers.value
-  if (!a.reason_key) { flash('Причина tanlang'); return }
-  if (!a.status) { flash('Статус tanlang'); return }
+  if (!a.reason_key) { flash(t('survey.pickReason')); return }
+  if (!a.status) { flash(t('survey.pickStatus')); return }
   const reason = (config.value.reasons || []).find((r) => r.key === a.reason_key)
-  if (reason && reason.required && !(a.comment || '').trim()) { flash('Комментарий majburiy'); return }
+  if (reason && reason.required && !(a.comment || '').trim()) { flash(t('survey.commentRequired')); return }
   saving.value = true
   try {
     await api.surveySubmit({ call_uuid: fillActive.value.uuid, operator_ext: opExt(fillActive.value), answers: a })
     responses.value = new Set([...responses.value, fillActive.value.uuid])
-    flash('Anketa saqlandi'); closeFill()
-  } catch (e) { flash('Xato: ' + e.message) }
+    flash(t('survey.saved')); closeFill()
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { saving.value = false }
 }
 
@@ -146,38 +147,38 @@ onMounted(() => applyPreset('week'))
 
 <template>
   <div class="calls">
-    <div class="top"><div><h1>Qo'ng'iroqlar</h1><p>Barcha qo'ng'iroqlar · audio · anketa</p></div></div>
+    <div class="top"><div><h1>{{ t('nav.calls') }}</h1><p>{{ t('calls.subtitle') }}</p></div></div>
     <Teleport to="body"><Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition></Teleport>
 
     <div class="kpis">
-      <div class="kpi card"><div class="kpi__v">{{ kpi.total }}</div><div class="kpi__l">Jami</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ kpi.answered }}</div><div class="kpi__l">Javob berilgan</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ kpi.missed }}</div><div class="kpi__l">O'tkazib yuborilgan</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--accent)">{{ kpi.cov }}%</div><div class="kpi__l">Anketa qoplanishi</div></div>
+      <div class="kpi card"><div class="kpi__v">{{ kpi.total }}</div><div class="kpi__l">{{ t('st.total') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ kpi.answered }}</div><div class="kpi__l">{{ t('st.answered') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ kpi.missed }}</div><div class="kpi__l">{{ t('st.missed') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--accent)">{{ kpi.cov }}%</div><div class="kpi__l">{{ t('survey.coverage') }}</div></div>
     </div>
 
     <div class="card filters">
       <div class="fl-presets">
-        <button v-for="p in [['today','Bugun'],['yesterday','Kecha'],['week','Hafta'],['month','Oy']]" :key="p[0]"
-                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ p[1] }}</button>
+        <button v-for="p in [['today','common.today'],['yesterday','common.yesterday'],['week','common.week'],['month','common.month']]" :key="p[0]"
+                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ t(p[1]) }}</button>
         <span class="fl-range mono">{{ rangeLabel }}</span>
       </div>
       <div class="fl-grid">
-        <label class="fld"><span>Dan</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Gacha</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Operator</span><select v-model="fOperator"><option value="">Hammasi</option><option v-for="o in operatorOptions" :key="o.ext" :value="o.ext">{{ o.name }} · #{{ o.ext }}</option></select></label>
-        <label class="fld"><span>Kanal</span><select v-model="fCompany"><option value="">Hammasi</option><option v-for="c in companies.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
-        <label class="fld"><span>Yo'nalish</span><select v-model="fDirection"><option value="">Hammasi</option><option value="inbound">Kiruvchi</option><option value="outbound">Chiquvchi</option></select></label>
-        <label class="fld"><span>Holat</span><select v-model="fStatus"><option value="">Hammasi</option><option value="answered">Javob berilgan</option><option value="missed">O'tkazib yuborilgan</option></select></label>
-        <label class="fld"><span>Anketa</span><select v-model="fAnketa"><option value="">Hammasi</option><option value="yes">To'ldirilgan</option><option value="no">To'ldirilmagan</option></select></label>
-        <label class="fld"><span>Telefon</span><input v-model="fPhone" placeholder="998…" /></label>
-        <label class="fld"><span>Min. suhbat (sek)</span><input type="number" min="0" v-model="fMinTalk" placeholder="0" /></label>
-        <button class="fl-reset" @click="resetFilters">Tozalash</button>
+        <label class="fld"><span>{{ t('common.from') }}</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('common.to') }}</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('common.operator') }}</span><select v-model="fOperator"><option value="">{{ t('common.all') }}</option><option v-for="o in operatorOptions" :key="o.ext" :value="o.ext">{{ o.name }} · #{{ o.ext }}</option></select></label>
+        <label class="fld"><span>{{ t('common.channel') }}</span><select v-model="fCompany"><option value="">{{ t('common.all') }}</option><option v-for="c in companies.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+        <label class="fld"><span>{{ t('common.direction') }}</span><select v-model="fDirection"><option value="">{{ t('common.all') }}</option><option value="inbound">{{ t('dash.incoming') }}</option><option value="outbound">{{ t('dash.outgoing') }}</option></select></label>
+        <label class="fld"><span>{{ t('tv.status') }}</span><select v-model="fStatus"><option value="">{{ t('common.all') }}</option><option value="answered">{{ t('st.answered') }}</option><option value="missed">{{ t('st.missed') }}</option></select></label>
+        <label class="fld"><span>{{ t('nav.survey') }}</span><select v-model="fAnketa"><option value="">{{ t('common.all') }}</option><option value="yes">{{ t('survey.filled') }}</option><option value="no">{{ t('survey.unfilled') }}</option></select></label>
+        <label class="fld"><span>{{ t('common.phone') }}</span><input v-model="fPhone" placeholder="998…" /></label>
+        <label class="fld"><span>{{ t('calls.minTalk') }}</span><input type="number" min="0" v-model="fMinTalk" placeholder="0" /></label>
+        <button class="fl-reset" @click="resetFilters">{{ t('common.reset') }}</button>
       </div>
     </div>
 
     <div class="section-h">
-      <h2>Ro'yxat <span class="count">{{ filtered.length }}</span></h2>
+      <h2>{{ t('common.list') }} <span class="count">{{ filtered.length }}</span></h2>
       <div class="pager" v-if="totalPages > 1">
         <button :disabled="page<=1" @click="page--">←</button><span class="mono">{{ page }} / {{ totalPages }}</span><button :disabled="page>=totalPages" @click="page++">→</button>
       </div>
@@ -186,23 +187,23 @@ onMounted(() => applyPreset('week'))
     <div v-if="loading" class="loading"><i class="spin"></i></div>
     <div v-else class="card tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Sana</th><th>Kanal</th><th>Klient</th><th>Operator</th><th class="ta-c">Yo'nalish</th><th class="ta-r">Suhbat</th><th class="ta-c">Anketa</th><th>Audio</th><th class="ta-r">Amal</th></tr></thead>
+        <thead><tr><th>{{ t('common.date') }}</th><th>{{ t('common.channel') }}</th><th>{{ t('common.client') }}</th><th>{{ t('common.operator') }}</th><th class="ta-c">{{ t('common.direction') }}</th><th class="ta-r">{{ t('common.talk') }}</th><th class="ta-c">{{ t('nav.survey') }}</th><th>{{ t('common.audio') }}</th><th class="ta-r">{{ t('common.action') }}</th></tr></thead>
         <tbody>
           <tr v-for="c in paged" :key="c.uuid">
             <td class="mono dim">{{ fmtDateTime(c.start_stamp) }}</td>
             <td><span class="cbadge" :class="callCompany(c)">{{ compBadge(callCompany(c)) }}</span></td>
             <td class="mono">{{ clientNumber(c) }}</td>
             <td><div class="top-op"><span class="tav">{{ (names[opExt(c)] || opExt(c)).slice(0,2).toUpperCase() }}</span><span>{{ opName(c) }}</span></div></td>
-            <td class="ta-c"><span class="dir" :class="c.direction === 'outbound' ? 'out' : 'in'">{{ c.direction === 'outbound' ? 'Chiq.' : 'Kir.' }}</span></td>
+            <td class="ta-c"><span class="dir" :class="c.direction === 'outbound' ? 'out' : 'in'">{{ c.direction === 'outbound' ? t('common.dirOut') : t('common.dirIn') }}</span></td>
             <td class="ta-r mono" :class="{ miss: !isAnswered(c) }">{{ isAnswered(c) ? fmtDuration(c.user_talk_time) : '—' }}</td>
             <td class="ta-c"><span v-if="isFilled(c)" class="ank ank--yes">✓</span><span v-else-if="isAnswered(c)" class="ank ank--no">—</span><span v-else class="ank">·</span></td>
             <td><audio v-if="isAnswered(c)" class="rec" controls preload="none" :src="api.recordingUrl(c.uuid)"></audio><span v-else class="dim">—</span></td>
             <td class="ta-r acts">
-              <button class="link-btn" @click="copyReview(c)" title="Baholash havolasini nusxalash">🔗</button>
-              <button v-if="isAnswered(c) && !isFilled(c)" class="fill-btn" @click="openFill(c)">To'ldirish</button>
+              <button class="link-btn" @click="copyReview(c)" :title="t('calls.copyReviewLink')">🔗</button>
+              <button v-if="isAnswered(c) && !isFilled(c)" class="fill-btn" @click="openFill(c)">{{ t('survey.fill') }}</button>
             </td>
           </tr>
-          <tr v-if="!paged.length"><td colspan="9" class="empty">Qo'ng'iroq topilmadi</td></tr>
+          <tr v-if="!paged.length"><td colspan="9" class="empty">{{ t('calls.empty') }}</td></tr>
         </tbody>
       </table>
     </div>
@@ -213,14 +214,14 @@ onMounted(() => applyPreset('week'))
         <div v-if="fillActive" class="modal" @click.self="closeFill">
           <div class="modal__card">
             <div class="modal__head">
-              <div><h3>Anketa to'ldirish</h3>
+              <div><h3>{{ t('survey.fillTitle') }}</h3>
                 <p class="opline">👤 <b>{{ opName(fillActive) }}</b> · #{{ opExt(fillActive) }}</p>
                 <p class="mono nums">{{ clientNumber(fillActive) }} · {{ fmtDateTime(fillActive.start_stamp) }}</p>
               </div>
               <button class="modal__x" @click="closeFill">×</button>
             </div>
             <div class="modal__body"><AnketaForm :config="config" v-model="answers" /></div>
-            <div class="modal__foot"><button class="btn-ghost" @click="closeFill">Bekor</button><button @click="submitFill" :disabled="saving">{{ saving ? '...' : 'Saqlash' }}</button></div>
+            <div class="modal__foot"><button class="btn-ghost" @click="closeFill">{{ t('common.cancel') }}</button><button @click="submitFill" :disabled="saving">{{ saving ? '...' : t('common.save') }}</button></div>
           </div>
         </div>
       </Transition>

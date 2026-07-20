@@ -64,7 +64,7 @@ const isActive = (l) => l.match(route.path)
 
   <div v-else class="layout" :class="{ collapsed }">
     <!-- ochish tugmasi (yopiq holatda) -->
-    <button v-if="collapsed" class="reopen" @click="toggleSidebar" title="Menyu">
+    <button v-if="collapsed" class="reopen" @click="toggleSidebar" :title="t('app.menu')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
     </button>
 
@@ -76,7 +76,7 @@ const isActive = (l) => l.match(route.path)
           </div>
           <div class="brand__txt"><strong>Monitoring</strong><span>{{ t('app.subtitle') }}</span></div>
         </RouterLink>
-        <button class="sb-toggle" @click="toggleSidebar" title="Yopish">
+        <button class="sb-toggle" @click="toggleSidebar" :title="t('common.close')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
       </div>

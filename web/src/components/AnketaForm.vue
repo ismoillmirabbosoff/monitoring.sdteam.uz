@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { t } from '../i18n.js'
 
 // phone.sdteam uslubidagi anketa: Sabab → Modullar → Status → Izoh
 const props = defineProps({
@@ -30,7 +31,7 @@ const statusList = computed(() => {
   if (r && r.module_set === 'custom' && Array.isArray(r.custom_statuses) && r.custom_statuses.length) return r.custom_statuses
   return statuses.value
 })
-const moduleTitle = computed(() => currentReason.value?.module_title || 'Модули')
+const moduleTitle = computed(() => currentReason.value?.module_title || t('survey.modules'))
 const commentRequired = computed(() => !!currentReason.value?.required)
 
 function patch(p) { emit('update:modelValue', { ...val.value, ...p }) }
@@ -50,7 +51,7 @@ function hasModule(m) { return Array.isArray(val.value.modules) && val.value.mod
   <div class="af">
     <!-- SABAB -->
     <div class="af__q">
-      <label class="af__label">Причина обращения <span class="af__req">*</span></label>
+      <label class="af__label">{{ t('survey.reason') }} <span class="af__req">*</span></label>
       <div class="af__chips">
         <button v-for="r in reasons" :key="r.key" type="button" class="af__chip"
                 :class="{ on: val.reason_key === r.key }" @click="selectReason(r)">{{ r.label }}</button>
@@ -69,7 +70,7 @@ function hasModule(m) { return Array.isArray(val.value.modules) && val.value.mod
 
       <!-- STATUS -->
       <div class="af__q">
-        <label class="af__label">Статус <span class="af__req">*</span></label>
+        <label class="af__label">{{ t('survey.status') }} <span class="af__req">*</span></label>
         <div class="af__chips">
           <button v-for="st in statusList" :key="st" type="button" class="af__chip"
                   :class="{ on: val.status === st }" @click="patch({ status: st })">{{ st }}</button>
@@ -78,12 +79,12 @@ function hasModule(m) { return Array.isArray(val.value.modules) && val.value.mod
 
       <!-- IZOH -->
       <div class="af__q">
-        <label class="af__label">Комментарий <span v-if="commentRequired" class="af__req">*</span></label>
+        <label class="af__label">{{ t('survey.comment') }} <span v-if="commentRequired" class="af__req">*</span></label>
         <textarea class="af__ta" rows="3" :value="val.comment || ''"
-                  @input="patch({ comment: $event.target.value })" placeholder="Комментарий…"></textarea>
+                  @input="patch({ comment: $event.target.value })" :placeholder="t('survey.commentPlaceholder')"></textarea>
       </div>
     </template>
-    <div v-else class="af__hint">Сначала выберите причину обращения</div>
+    <div v-else class="af__hint">{{ t('survey.pickReasonFirst') }}</div>
   </div>
 </template>
 

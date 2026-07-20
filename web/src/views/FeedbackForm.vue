@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api.js'
+import { t } from '../i18n.js'
 
 const route = useRoute()
 const score = ref(0)
@@ -11,12 +12,12 @@ const done = ref(false)
 const error = ref('')
 
 async function submit() {
-  if (!score.value) { error.value = 'Iltimos, baho tanlang'; return }
+  if (!score.value) { error.value = t('feedback.pickScore'); return }
   sending.value = true; error.value = ''
   try {
     await api.feedbackSubmit({ call_uuid: route.params.uuid || '', score: score.value, comment: comment.value.trim() })
     done.value = true
-  } catch (e) { error.value = 'Xatolik: ' + (e.message || '') }
+  } catch (e) { error.value = t('common.errorPrefix') + (e.message || '') }
   finally { sending.value = false }
 }
 </script>
@@ -29,20 +30,20 @@ async function submit() {
       </div>
 
       <template v-if="!done">
-        <h1>Xizmatimizni baholang</h1>
-        <p class="fb__sub">Qo'ng'iroq sifatini baholang</p>
+        <h1>{{ t('feedback.rateTitle') }}</h1>
+        <p class="fb__sub">{{ t('feedback.rateSub') }}</p>
         <div class="fb__stars">
           <button v-for="n in 5" :key="n" type="button" class="fb__star" :class="{ on: score >= n }" @click="score = n">★</button>
         </div>
-        <textarea v-model="comment" class="fb__ta" rows="3" placeholder="Izoh (ixtiyoriy)…"></textarea>
+        <textarea v-model="comment" class="fb__ta" rows="3" :placeholder="t('feedback.commentOptional')"></textarea>
         <div v-if="error" class="fb__err">{{ error }}</div>
-        <button class="fb__btn" @click="submit" :disabled="sending">{{ sending ? '...' : 'Yuborish' }}</button>
+        <button class="fb__btn" @click="submit" :disabled="sending">{{ sending ? '...' : t('common.send') }}</button>
       </template>
 
       <template v-else>
         <div class="fb__ok">✓</div>
-        <h1>Rahmat!</h1>
-        <p class="fb__sub">Bahoyingiz qabul qilindi.</p>
+        <h1>{{ t('feedback.thanks') }}</h1>
+        <p class="fb__sub">{{ t('feedback.received') }}</p>
       </template>
     </div>
   </div>

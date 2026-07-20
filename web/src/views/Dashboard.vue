@@ -189,7 +189,7 @@ async function refresh() {
     await Promise.all([loadCalls(), loadFifo(), loadUsers(), loadHidden(), loadStats()])
     error.value = ''
   } catch (e) {
-    error.value = e.message || 'Yuklashda xato'
+    error.value = e.message || t('common.loadError')
   } finally {
     loading.value = false
   }

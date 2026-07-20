@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../api.js'
 import { auth } from '../auth.js'
+import { t } from '../i18n.js'
 
 const sessions = ref([])
 const msg = ref('')
@@ -15,7 +16,7 @@ function ago(d) {
   return Math.floor(s/86400) + 'd'
 }
 function device(ua) {
-  if (/iphone|android|mobile/i.test(ua)) return 'Mobil'
+  if (/iphone|android|mobile/i.test(ua)) return t('sessions.mobile')
   if (/chrome/i.test(ua)) return 'Chrome'
   if (/firefox/i.test(ua)) return 'Firefox'
   if (/safari/i.test(ua)) return 'Safari'
@@ -23,11 +24,11 @@ function device(ua) {
 }
 
 async function load() {
-  try { sessions.value = await api.sessionList() } catch (e) { flash('Xato: ' + e.message) }
+  try { sessions.value = await api.sessionList() } catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 async function revoke(s) {
-  try { await api.sessionRevoke(s.token); flash('Sessiya bekor qilindi'); await load() }
-  catch (e) { flash('Xato: ' + e.message) }
+  try { await api.sessionRevoke(s.token); flash(t('sessions.revoked')); await load() }
+  catch (e) { flash(t('common.errorPrefix') + e.message) }
 }
 const isMine = (s) => s.user_id === auth.user?.id
 
@@ -38,10 +39,10 @@ onMounted(load)
   <div class="sessions">
     <div class="top">
       <div>
-        <h1>Faol sessiyalar</h1>
-        <p>{{ sessions.length }} ta qurilma tizimga kirgan</p>
+        <h1>{{ t('sessions.title') }}</h1>
+        <p>{{ sessions.length }} {{ t('sessions.devicesLoggedIn') }}</p>
       </div>
-      <button class="btn-ghost" @click="load">↻ Yangilash</button>
+      <button class="btn-ghost" @click="load">↻ {{ t('common.refresh') }}</button>
     </div>
 
     <Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition>
@@ -51,19 +52,19 @@ onMounted(load)
         <div class="sess__top">
           <div class="sess__av">{{ (s.user_name || s.user_email).slice(0,2).toUpperCase() }}</div>
           <div class="sess__id">
-            <div class="sess__name">{{ s.user_name || '—' }} <span v-if="isMine(s)" class="you">siz</span></div>
+            <div class="sess__name">{{ s.user_name || '—' }} <span v-if="isMine(s)" class="you">{{ t('sessions.you') }}</span></div>
             <div class="sess__email">{{ s.user_email }}</div>
           </div>
-          <span class="role" :class="s.user_role">{{ s.user_role === 'admin' ? 'Admin' : 'Operator' }}</span>
+          <span class="role" :class="s.user_role">{{ s.user_role === 'admin' ? t('role.adminShort') : t('role.operator') }}</span>
         </div>
         <div class="sess__meta">
-          <span><b>Qurilma:</b> {{ device(s.user_agent) }}</span>
+          <span><b>{{ t('sessions.device') }}:</b> {{ device(s.user_agent) }}</span>
           <span><b>IP:</b> <span class="mono">{{ (s.ip || '').split(':')[0] }}</span></span>
-          <span><b>Faollik:</b> {{ ago(s.last_seen) }} oldin</span>
+          <span><b>{{ t('sessions.activity') }}:</b> {{ ago(s.last_seen) }} {{ t('sessions.ago') }}</span>
         </div>
-        <button class="sess__revoke" @click="revoke(s)">Sessiyani bekor qilish</button>
+        <button class="sess__revoke" @click="revoke(s)">{{ t('sessions.revoke') }}</button>
       </div>
-      <div v-if="!sessions.length" class="empty card">Faol sessiyalar yo'q</div>
+      <div v-if="!sessions.length" class="empty card">{{ t('sessions.empty') }}</div>
     </div>
   </div>
 </template>

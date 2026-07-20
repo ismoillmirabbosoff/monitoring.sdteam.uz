@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api, isExtension, todayStr, fmtDuration, COMPANIES, companyForGateway, companyForQueue } from '../api.js'
+import { t } from '../i18n.js'
 
 const calls = ref([])
 const names = ref({})
@@ -29,7 +30,7 @@ function callCompany(c) {
 }
 function opName(e) { return names.value[e] || ('Operator ' + e) }
 function fmtDateTime(s) { const d = new Date(s * 1000); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}` }
-function fmtDelay(sec) { if (sec == null) return '—'; const m = Math.floor(sec / 60); if (m < 60) return `${m} min`; const h = Math.floor(m / 60); return `${h} soat ${m % 60} min` }
+function fmtDelay(sec) { if (sec == null) return '—'; const m = Math.floor(sec / 60); if (m < 60) return `${m} ${t('analytics.min')}`; const h = Math.floor(m / 60); return `${h} ${t('analytics.hour')} ${m % 60} ${t('analytics.min')}` }
 
 function setRange(f, t) { fromInput.value = todayStr(f); toInput.value = todayStr(t) }
 function applyPreset(id) {
@@ -55,7 +56,7 @@ async function load() {
     for (const u of us || []) { if (u.num) { nm[String(u.num)] = u.name; cm[String(u.num)] = companyForQueue(u.tr1) } }
     names.value = nm; extCompany.value = cm
     calls.value = [...cs].sort((a, b) => a.start_stamp - b.start_stamp)
-  } catch (e) { flash('Xato: ' + e.message) }
+  } catch (e) { flash(t('common.errorPrefix') + e.message) }
   finally { loading.value = false }
 }
 
@@ -114,53 +115,53 @@ onMounted(() => applyPreset('week'))
 
 <template>
   <div class="an">
-    <div class="top"><div><h1>Analitika (perezvon)</h1><p>O'tkazib yuborilgan → qayta qo'ng'iroq va SLA</p></div></div>
+    <div class="top"><div><h1>{{ t('analytics.title') }}</h1><p>{{ t('analytics.subtitle') }}</p></div></div>
     <Transition name="page"><div v-if="msg" class="toast">{{ msg }}</div></Transition>
 
     <div class="kpis">
-      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ kpi.total }}</div><div class="kpi__l">O'tkazib yuborilgan</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ kpi.resolved }}</div><div class="kpi__l">Qayta bog'langan</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--amber)">{{ kpi.unresolved }}</div><div class="kpi__l">Bog'lanilmagan</div></div>
-      <div class="kpi card"><div class="kpi__v" style="color:var(--accent)">{{ kpi.sla }}%</div><div class="kpi__l">SLA (≤15 min)</div></div>
-      <div class="kpi card"><div class="kpi__v mono">{{ fmtDelay(kpi.avg) }}</div><div class="kpi__l">O'rtacha kechikish</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--red)">{{ kpi.total }}</div><div class="kpi__l">{{ t('st.missed') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--green)">{{ kpi.resolved }}</div><div class="kpi__l">{{ t('analytics.reconnected') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--amber)">{{ kpi.unresolved }}</div><div class="kpi__l">{{ t('analytics.notReconnected') }}</div></div>
+      <div class="kpi card"><div class="kpi__v" style="color:var(--accent)">{{ kpi.sla }}%</div><div class="kpi__l">{{ t('analytics.sla15') }}</div></div>
+      <div class="kpi card"><div class="kpi__v mono">{{ fmtDelay(kpi.avg) }}</div><div class="kpi__l">{{ t('analytics.avgDelay') }}</div></div>
     </div>
 
     <div class="card filters">
       <div class="fl-presets">
-        <button v-for="p in [['today','Bugun'],['yesterday','Kecha'],['week','Hafta'],['month','Oy']]" :key="p[0]"
-                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ p[1] }}</button>
+        <button v-for="p in [['today','common.today'],['yesterday','common.yesterday'],['week','common.week'],['month','common.month']]" :key="p[0]"
+                class="preset" :class="{ active: preset === p[0] }" @click="applyPreset(p[0])">{{ t(p[1]) }}</button>
         <span class="fl-range mono">{{ rangeLabel }}</span>
       </div>
       <div class="fl-row">
-        <label class="fld"><span>Dan</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Gacha</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
-        <label class="fld"><span>Kanal</span><select v-model="fCompany"><option value="">Hammasi</option><option v-for="c in companies.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+        <label class="fld"><span>{{ t('common.from') }}</span><input type="date" v-model="fromInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('common.to') }}</span><input type="date" v-model="toInput" @change="preset='custom'; load()" /></label>
+        <label class="fld"><span>{{ t('common.channel') }}</span><select v-model="fCompany"><option value="">{{ t('common.all') }}</option><option v-for="c in companies.filter(x=>x.id)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
       </div>
     </div>
 
-    <div class="section-h"><h2>Kechikish taqsimoti</h2></div>
+    <div class="section-h"><h2>{{ t('analytics.delayDist') }}</h2></div>
     <div class="card buckets">
-      <div class="bk"><span class="bk__v" style="color:var(--green)">{{ buckets.m5 }}</span><span class="bk__l">≤ 5 min</span></div>
-      <div class="bk"><span class="bk__v" style="color:#22c55e">{{ buckets.m15 }}</span><span class="bk__l">5–15 min</span></div>
-      <div class="bk"><span class="bk__v" style="color:var(--amber)">{{ buckets.m30 }}</span><span class="bk__l">15–30 min</span></div>
-      <div class="bk"><span class="bk__v" style="color:#f97316">{{ buckets.m30p }}</span><span class="bk__l">> 30 min</span></div>
-      <div class="bk"><span class="bk__v" style="color:var(--red)">{{ buckets.none }}</span><span class="bk__l">Bog'lanilmagan</span></div>
+      <div class="bk"><span class="bk__v" style="color:var(--green)">{{ buckets.m5 }}</span><span class="bk__l">{{ t('analytics.b5') }}</span></div>
+      <div class="bk"><span class="bk__v" style="color:#22c55e">{{ buckets.m15 }}</span><span class="bk__l">{{ t('analytics.b15') }}</span></div>
+      <div class="bk"><span class="bk__v" style="color:var(--amber)">{{ buckets.m30 }}</span><span class="bk__l">{{ t('analytics.b30') }}</span></div>
+      <div class="bk"><span class="bk__v" style="color:#f97316">{{ buckets.m30p }}</span><span class="bk__l">{{ t('analytics.b30p') }}</span></div>
+      <div class="bk"><span class="bk__v" style="color:var(--red)">{{ buckets.none }}</span><span class="bk__l">{{ t('analytics.notReconnected') }}</span></div>
     </div>
 
-    <div class="section-h"><h2>O'tkazib yuborilganlar <span class="count">{{ analysis.length }}</span></h2></div>
+    <div class="section-h"><h2>{{ t('st.missed') }} <span class="count">{{ analysis.length }}</span></h2></div>
     <div v-if="loading" class="loading"><i class="spin"></i></div>
     <div v-else class="card tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Vaqt</th><th>Klient</th><th>Operator</th><th class="ta-c">Holat</th><th class="ta-r">Kechikish</th></tr></thead>
+        <thead><tr><th>{{ t('st.time') }}</th><th>{{ t('common.client') }}</th><th>{{ t('common.operator') }}</th><th class="ta-c">{{ t('tv.status') }}</th><th class="ta-r">{{ t('analytics.delay') }}</th></tr></thead>
         <tbody>
           <tr v-for="r in analysis.slice(0, 300)" :key="r.uuid">
             <td class="mono dim">{{ fmtDateTime(r.start) }}</td>
             <td class="mono">{{ r.phone }}</td>
             <td>{{ r.ext ? opName(r.ext) : '—' }}</td>
-            <td class="ta-c"><span class="st" :class="r.resolved ? 'ok' : 'bad'">{{ r.resolved ? 'Bog\'landi' : 'Bog\'lanilmagan' }}</span></td>
+            <td class="ta-c"><span class="st" :class="r.resolved ? 'ok' : 'bad'">{{ r.resolved ? t('analytics.reconnectedShort') : t('analytics.notReconnected') }}</span></td>
             <td class="ta-r mono">{{ fmtDelay(r.delay) }}</td>
           </tr>
-          <tr v-if="!analysis.length"><td colspan="5" class="empty">O'tkazib yuborilgan qo'ng'iroq yo'q 🎉</td></tr>
+          <tr v-if="!analysis.length"><td colspan="5" class="empty">{{ t('analytics.noMissed') }} 🎉</td></tr>
         </tbody>
       </table>
     </div>

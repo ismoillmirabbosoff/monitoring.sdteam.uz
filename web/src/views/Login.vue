@@ -3,6 +3,7 @@ import { ref, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { api } from '../api.js'
 import { auth } from '../auth.js'
+import { t } from '../i18n.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,7 +34,7 @@ async function submitLogin() {
     step.value = 'code'
     await nextTick(); codeInput.value?.focus()
   } catch (e) {
-    error.value = e.message === '401' ? 'Login yoki parol noto\'g\'ri' : (e.message || 'Xato')
+    error.value = e.message === '401' ? t('login.badCredentials') : (e.message || t('common.error'))
   } finally { loading.value = false }
 }
 
@@ -46,7 +47,7 @@ async function submitCode() {
     const dest = route.query.redirect || (r.user.role === 'admin' ? '/admin' : '/')
     router.replace(dest)
   } catch (e) {
-    error.value = e.message === '401' ? 'Kod noto\'g\'ri yoki muddati o\'tgan' : (e.message || 'Xato')
+    error.value = e.message === '401' ? t('login.badCode') : (e.message || t('common.error'))
   } finally { loading.value = false }
 }
 
@@ -63,27 +64,27 @@ function back() { step.value = 'login'; code.value = ''; error.value = '' }
 
       <!-- 1-bosqich: email + parol -->
       <form v-if="step === 'login'" @submit.prevent="submitLogin" class="auth__form">
-        <p class="auth__sub">Tizimga kirish</p>
-        <label class="fld"><span>Email yoki ext</span>
-          <input v-model="email" type="text" placeholder="email@salesdoc.io yoki 201" autofocus autocomplete="username" />
+        <p class="auth__sub">{{ t('login.subtitle') }}</p>
+        <label class="fld"><span>{{ t('login.emailOrExt') }}</span>
+          <input v-model="email" type="text" :placeholder="t('login.emailPlaceholder')" autofocus autocomplete="username" />
         </label>
-        <label class="fld"><span>Parol</span>
+        <label class="fld"><span>{{ t('login.password') }}</span>
           <input v-model="password" type="password" placeholder="••••••••" autocomplete="current-password" />
         </label>
         <div v-if="error" class="auth__err">{{ error }}</div>
-        <button type="submit" :disabled="loading">{{ loading ? '...' : 'Davom etish' }}</button>
+        <button type="submit" :disabled="loading">{{ loading ? '...' : t('login.continue') }}</button>
       </form>
 
       <!-- 2-bosqich: kod -->
       <form v-else @submit.prevent="submitCode" class="auth__form">
-        <p class="auth__sub"><b>{{ email }}</b> ga yuborilgan kodni kiriting</p>
-        <div v-if="devCode" class="auth__dev">DEV kod: <b class="mono">{{ devCode }}</b></div>
-        <label class="fld"><span>Tasdiqlash kodi</span>
+        <p class="auth__sub">{{ t('login.enterCodePre') }} <b>{{ email }}</b> {{ t('login.enterCodePost') }}</p>
+        <div v-if="devCode" class="auth__dev">{{ t('login.devCode') }}: <b class="mono">{{ devCode }}</b></div>
+        <label class="fld"><span>{{ t('login.verifyCode') }}</span>
           <input ref="codeInput" v-model="code" inputmode="numeric" maxlength="6" placeholder="000000" class="auth__code mono" />
         </label>
         <div v-if="error" class="auth__err">{{ error }}</div>
-        <button type="submit" :disabled="loading">{{ loading ? '...' : 'Kirish' }}</button>
-        <button type="button" class="btn-ghost auth__back" @click="back">← Orqaga</button>
+        <button type="submit" :disabled="loading">{{ loading ? '...' : t('login.enter') }}</button>
+        <button type="button" class="btn-ghost auth__back" @click="back">← {{ t('common.back') }}</button>
       </form>
     </div>
   </div>

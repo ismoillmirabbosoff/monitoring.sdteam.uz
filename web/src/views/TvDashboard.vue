@@ -4,10 +4,9 @@ import { GridLayout, GridItem } from 'grid-layout-plus'
 import { api, parseFifoUsers, isExtension, companyForQueue, companyName, COMPANIES, wsUrl } from '../api.js'
 import { t } from '../i18n.js'
 
-const fifoOnline = ref({})    // ext -> online bool
+const rawStatus = ref({})     // ext -> xom OnlinePBX holati (WS user_registration/user_blf'dan)
 const names = ref({})         // ext -> ism
 const compMap = ref({})       // ext -> kompaniya
-const live = ref({})          // ext -> 'talking'|'ringing'|'dnd'
 const opStats = ref({})       // ext -> {incoming, outgoing, survey_unfilled, servers}
 const hidden = ref(new Set())
 const company = ref('')
@@ -23,22 +22,35 @@ let ws = null, pollTimer = null, clockTimer = null, reconnectTimer = null
 
 const companies = COMPANIES
 
-// Status: online(green) / offline(red) / talking(blue) / ringing(amber) / dnd(orange)
+// Status: online(green) / offline(red) / talking(blue) / ringing(amber) / dnd(orange) / unknown(grey)
 const STATUS = {
   online:  { key: 'tv.onLine',  color: '#15803d' },
-  offline: { key: 'tv.offLine', color: '#64748b' },
+  offline: { key: 'tv.offLine', color: '#dc2626' },
   talking: { key: 'tv.talking', color: '#1d4ed8' },
   ringing: { key: 'tv.ringing', color: '#b45309' },
   dnd:     { key: 'tv.dnd',     color: '#6d28d9' },
+  unknown: { key: 'tv.unknown', color: '#94a3b8' },
+}
+
+// OnlinePBX xom holat (registration state / blf status) → bizning kategoriya.
+// Asl monitoring app mantiqi: register/registered/answered/hangup → online,
+// unregister → offline, ringing → ringing, dnd → dnd, boshqasi → unknown (kulrang).
+function mapStatus(raw) {
+  const s = String(raw || '').toLowerCase()
+  if (s === 'talking' || s === 'busy') return 'talking'
+  if (s === 'ringing' || s === 'early') return 'ringing'
+  if (s === 'dnd' || s === 'do_not_disturb') return 'dnd'
+  if (s === 'unregister' || s === 'unregistered') return 'offline'
+  if (['register', 'registered', 'answered', 'hangup', 'register_attempt', 'pre_register', 'online'].includes(s)) return 'online'
+  return 'unknown'
 }
 
 const operators = computed(() => {
-  const exts = new Set([...Object.keys(fifoOnline.value), ...Object.keys(names.value)])
+  const exts = new Set([...Object.keys(rawStatus.value), ...Object.keys(names.value)])
   let list = [...exts]
     .filter((e) => !hidden.value.has(e))
     .map((ext) => {
-      let status = fifoOnline.value[ext] ? 'online' : 'offline'
-      if (live.value[ext]) status = live.value[ext]
+      const status = mapStatus(rawStatus.value[ext])
       const st = opStats.value[ext] || {}
       return {
         ext,
@@ -53,7 +65,7 @@ const operators = computed(() => {
       }
     })
   if (company.value) list = list.filter((o) => o.company === company.value)
-  const rank = { talking: 0, ringing: 1, dnd: 2, online: 3, offline: 4 }
+  const rank = { talking: 0, ringing: 1, dnd: 2, online: 3, unknown: 4, offline: 5 }
   list.sort((a, b) => rank[a.status] - rank[b.status] || Number(a.ext) - Number(b.ext))
   return list
 })
@@ -104,7 +116,7 @@ function resetLayout() {
 }
 
 const counts = computed(() => {
-  const c = { online: 0, offline: 0, talking: 0, ringing: 0, dnd: 0 }
+  const c = { online: 0, offline: 0, talking: 0, ringing: 0, dnd: 0, unknown: 0 }
   for (const o of operators.value) c[o.status]++
   return c
 })
@@ -121,23 +133,6 @@ const columns = computed(() => COLS.map((c) => ({ ...c, ops: operators.value.fil
 const clock = computed(() => now.value.toLocaleTimeString('ru-RU'))
 const dateLabel = computed(() => now.value.toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 
-// "Liniyada" ni REAL faoliyatdan aniqlaymiz: OnlinePBX fifo flagi doim "1" qaytaradi
-// (navbatga a'zolik), shu sabab so'nggi ONLINE_WINDOW ichida qo'ng'iroq qilgan/qabul
-// qilgan operatorlarni online deb belgilaymiz. WS talking/ringing/dnd buni ustidan yozadi.
-const ONLINE_WINDOW = 20 * 60 // 20 daqiqa
-function opExtOf(c) {
-  if (c.direction === 'outbound') return isExtension(c.caller_id_number) ? c.caller_id_number : ''
-  return isExtension(c.destination_number) ? c.destination_number : ''
-}
-async function loadFifo() {
-  try {
-    const now = Math.floor(Date.now() / 1000)
-    const calls = await api.data('', now - ONLINE_WINDOW, now)
-    const map = {}
-    for (const c of calls || []) { const e = opExtOf(c); if (e) map[e] = true }
-    fifoOnline.value = map
-  } catch {}
-}
 async function loadUsers() {
   try {
     const users = await api.users()
@@ -157,7 +152,7 @@ async function loadStats() {
     opStats.value = map
   } catch {}
 }
-async function refresh() { await Promise.all([loadFifo(), loadUsers(), loadHidden(), loadStats()]) }
+async function refresh() { await Promise.all([loadUsers(), loadHidden(), loadStats()]) }
 
 async function initWS() {
   try {
@@ -167,7 +162,7 @@ async function initWS() {
     ws.onopen = () => {
       wsState.value = 'live'
       ws.send(JSON.stringify({ command: 'subscribe', reqId: 'tv-' + Date.now(),
-        data: { eventGroups: ['user_registration', 'user_blf', 'user_status', 'call_status', 'call_start', 'call_end'] } }))
+        data: { eventGroups: ['user_blf', 'user_registration', 'user_status', 'call_status', 'call_start', 'call_end'] } }))
     }
     ws.onmessage = (ev) => { try { handleWS(JSON.parse(ev.data)) } catch {} }
     ws.onclose = () => { wsState.value = 'offline'; clearTimeout(reconnectTimer); reconnectTimer = setTimeout(initWS, 5000) }
@@ -182,47 +177,23 @@ function initials(op) {
   return String(op.ext).slice(-2)
 }
 
-// WS hodisalari (referens phone.sddev.uz mantiqiga mos):
-//   user_registration → state (register/unregister) = online/offline
-//   user_blf / user_status → status (talking/ringing/busy/dnd) = jonli holat
-//   har hodisa data.uid (extension) bo'yicha kalitlanadi.
+// WS hodisalari (asl monitoring app mantiqi):
+//   call_status/call_start/call_end → statistikani yangilaymiz
+//   user_registration → data.state, user_blf/user_status → data.status; kalit = data.uid
+//   xom holat rawStatus'ga yoziladi, mapStatus() rangga aylantiradi.
 function handleWS(msg) {
-  const d = msg?.data || msg
-  const ev = (msg?.event || d?.event || d?.type || '').toLowerCase()
-  const st = String(d?.status || d?.state || '').toLowerCase()
-
-  // extension'ni aniqlash: avval uid/user, keyin call maydonlari
-  let ext = ''
-  for (const k of ['uid', 'user', 'extension', 'ext', 'number']) {
-    if (isExtension(d?.[k])) { ext = String(d[k]); break }
+  const ev = msg?.event
+  const d = msg?.data || {}
+  if (ev === 'call_status' || ev === 'call_start' || ev === 'call_end') {
+    loadStats() // qo'ng'iroq sonlari yangilanadi
+    return
   }
-  if (!ext) {
-    for (const k of ['caller', 'callee', 'src', 'dst', 'destination_number', 'caller_id_number']) {
-      if (isExtension(d?.[k])) { ext = String(d[k]); break }
-    }
-  }
-  if (!ext) return
-
-  // Ro'yxatdan o'tish (online/offline)
-  if (ev.includes('registration') || st.startsWith('register') || st.startsWith('unregister')) {
-    const online = !st.startsWith('unregister')
-    fifoOnline.value = { ...fifoOnline.value, [ext]: online }
-    if (!online) { const n = { ...live.value }; delete n[ext]; live.value = n }
-    if (st.startsWith('register')) { const n = { ...live.value }; delete n[ext]; live.value = n }
-  }
-
-  // Jonli holat (talking/ringing/dnd)
-  const next = { ...live.value }
-  if (ev === 'call_end' || st === 'hangup' || st === 'idle' || st === 'available') {
-    delete next[ext]
-  } else if (st === 'dnd' || st === 'do_not_disturb') {
-    next[ext] = 'dnd'
-  } else if (st === 'talking' || st === 'busy' || st === 'answered' || ev === 'call_status') {
-    next[ext] = 'talking'
-  } else if (st === 'ringing' || st === 'early' || ev === 'call_start') {
-    next[ext] = 'ringing'
-  }
-  live.value = next
+  const uid = String(d?.uid ?? '')
+  if (!uid) return
+  let raw = null
+  if (ev === 'user_blf' || ev === 'user_status') raw = d?.status
+  else if (ev === 'user_registration') raw = d?.state
+  if (raw) rawStatus.value = { ...rawStatus.value, [uid]: raw }
 }
 
 onMounted(async () => {
@@ -356,10 +327,11 @@ onUnmounted(() => {
 .tv__clock { font-size: 30px; font-weight: 700; letter-spacing: 0.01em; color: var(--text); }
 
 .s-online  { --c: #15803d; }
-.s-offline { --c: #64748b; }
+.s-offline { --c: #dc2626; }
 .s-talking { --c: #1d4ed8; }
 .s-ringing { --c: #b45309; }
 .s-dnd     { --c: #6d28d9; }
+.s-unknown { --c: #94a3b8; }
 
 /* Grafana uslubidagi grid toolbar */
 .tv__toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }

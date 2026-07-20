@@ -29,7 +29,7 @@ const M = {
     'st.name': 'Ism', 'st.online': 'Onlayn', 'st.inCalls': 'Kiruvchi', 'st.outCalls': 'Chiquvchi', 'st.time': 'Vaqt',
     'tv.title': 'Operatorlar monitoringi', 'tv.onLine': 'Liniyada', 'tv.offLine': "Liniyada yo'q",
     'tv.talking': 'Gaplashyapti', 'tv.dnd': 'Pilot (DND)', 'tv.ringing': 'Jiringlamoqda', 'tv.status': 'Holat',
-    'tv.unfilled': "To'ldirilmagan anketa", 'tv.servers': 'Serverlar', 'tv.missed': "O'tkazib yuborilgan",
+    'tv.unfilled': "To'ldirilmagan anketa", 'tv.servers': 'Serverlar', 'tv.missed': "O'tkazib yuborilgan", 'tv.unknown': "Noma'lum",
   },
   ru: {
     'app.subtitle': 'Колл-центр',
@@ -50,7 +50,7 @@ const M = {
     'st.name': 'Имя', 'st.online': 'Онлайн', 'st.inCalls': 'Вход.', 'st.outCalls': 'Исход.', 'st.time': 'Время',
     'tv.title': 'Мониторинг операторов', 'tv.onLine': 'На линии', 'tv.offLine': 'Не на линии',
     'tv.talking': 'Разговаривает', 'tv.dnd': 'Пилот (DND)', 'tv.ringing': 'Звонок', 'tv.status': 'Статус',
-    'tv.unfilled': 'Незаполненные анкеты', 'tv.servers': 'Серверы', 'tv.missed': 'Пропущенные',
+    'tv.unfilled': 'Незаполненные анкеты', 'tv.servers': 'Серверы', 'tv.missed': 'Пропущенные', 'tv.unknown': 'Неизвестно',
   },
   en: {
     'app.subtitle': 'Call Center',
@@ -71,7 +71,7 @@ const M = {
     'st.name': 'Name', 'st.online': 'Online', 'st.inCalls': 'In', 'st.outCalls': 'Out', 'st.time': 'Time',
     'tv.title': 'Operators monitoring', 'tv.onLine': 'On line', 'tv.offLine': 'Off line',
     'tv.talking': 'Talking', 'tv.dnd': 'Pilot (DND)', 'tv.ringing': 'Ringing', 'tv.status': 'Status',
-    'tv.unfilled': 'Unfilled surveys', 'tv.servers': 'Servers', 'tv.missed': 'Missed',
+    'tv.unfilled': 'Unfilled surveys', 'tv.servers': 'Servers', 'tv.missed': 'Missed', 'tv.unknown': 'Unknown',
   },
 }
 

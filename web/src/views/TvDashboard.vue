@@ -99,7 +99,7 @@ const missedCalls = computed(() => {
 function fmtClock(ts) { const d = new Date(ts * 1000); const p = (n) => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}` }
 
 // ---- Grafana uslubidagi grid (surish + o'lchamini o'zgartirish) ----
-const GRID_COLS = 12, DEF_W = 3, DEF_H = 2
+const GRID_COLS = 12, DEF_W = 4, DEF_H = 3
 const editable = ref(false)
 const layout = ref([])              // [{i:ext, x, y, w, h}]
 const opByExt = computed(() => Object.fromEntries(operators.value.map((o) => [o.ext, o])))
@@ -108,9 +108,9 @@ const gridItems = computed(() =>
   layout.value.map((it) => ({ ...it, op: opByExt.value[it.i] })).filter((c) => c.op)
 )
 
-function loadPos() { try { return JSON.parse(localStorage.getItem('tv_layout') || '{}') } catch { return {} } }
+function loadPos() { try { return JSON.parse(localStorage.getItem('tv_layout_v2') || '{}') } catch { return {} } }
 let savedPos = loadPos()
-function savePos() { localStorage.setItem('tv_layout', JSON.stringify(savedPos)) }
+function savePos() { localStorage.setItem('tv_layout_v2', JSON.stringify(savedPos)) }
 
 // Ko'rinadigan operatorlar bilan layoutni moslashtiradi (yangi qo'shadi, yo'qolganini olib tashlaydi).
 function reconcile() {
@@ -124,7 +124,8 @@ function reconcile() {
     const p = savedPos[ext]
     if (p) next.push({ i: ext, x: p.x, y: p.y, w: p.w, h: p.h })
     else {
-      next.push({ i: ext, x: (idx % 4) * DEF_W, y: Math.floor(idx / 4) * DEF_H, w: DEF_W, h: DEF_H })
+      const perRow = Math.max(1, Math.floor(GRID_COLS / DEF_W))
+      next.push({ i: ext, x: (idx % perRow) * DEF_W, y: Math.floor(idx / perRow) * DEF_H, w: DEF_W, h: DEF_H })
       idx++
     }
   }
@@ -273,7 +274,7 @@ onUnmounted(() => {
       v-if="gridItems.length"
       v-model:layout="layout"
       :col-num="GRID_COLS"
-      :row-height="72"
+      :row-height="80"
       :margin="[16, 16]"
       :is-draggable="editable"
       :is-resizable="editable"
@@ -362,7 +363,7 @@ onUnmounted(() => {
 /* Ikki ustunli tana: chap = missed, o'ng = kartalar */
 .tv__body { display: flex; gap: 20px; align-items: flex-start; }
 .tv__main { flex: 1; min-width: 0; }
-.tv__missed { width: 300px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border);
+.tv__missed { width: 232px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border);
   border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
 .missed__head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border);
   font-weight: 700; font-size: 14px; }
@@ -392,28 +393,28 @@ onUnmounted(() => {
 .item {
   height: 100%; display: flex; flex-direction: column; overflow: hidden;
   background: color-mix(in srgb, var(--c) 14%, var(--surface));
-  border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent);
-  border-left: 6px solid var(--c);
-  border-radius: 14px; padding: 15px 17px; box-shadow: var(--shadow); transition: box-shadow 0.2s;
+  border: 3px solid color-mix(in srgb, var(--c) 60%, transparent);
+  border-left: 9px solid var(--c);
+  border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); transition: box-shadow 0.2s;
 }
 .item.is-edit { cursor: move; }
 .item:hover { box-shadow: var(--shadow-lg); }
 .item__top { display: flex; align-items: center; justify-content: space-between; }
-.item__ext { font-size: 15px; color: var(--text-faint); font-weight: 500; }
+.item__ext { font-size: 20px; color: var(--text-faint); font-weight: 700; }
 .item__dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
-.item__phone { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-  color: #fff; background: var(--c); flex-shrink: 0; box-shadow: 0 2px 8px color-mix(in srgb, var(--c) 45%, transparent); }
-.item__phone svg { width: 17px; height: 17px; }
+.item__phone { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+  color: #fff; background: var(--c); flex-shrink: 0; box-shadow: 0 2px 10px color-mix(in srgb, var(--c) 50%, transparent); }
+.item__phone svg { width: 26px; height: 26px; }
 .s-talking .item__phone, .s-ringing .item__phone, .s-online .item__phone { animation: pulse-dot 1.8s infinite; }
-.item__name { font-size: 17px; font-weight: 600; color: var(--text); margin-top: 12px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item__st { display: inline-block; align-self: flex-start; font-size: 11px; color: #fff; background: var(--c);
-  text-transform: uppercase; letter-spacing: 0.04em; margin-top: 9px; font-weight: 700; padding: 3px 10px; border-radius: 6px; }
-.item__metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: auto;
-  padding-top: 12px; border-top: 1px solid var(--border); }
-.m { display: flex; align-items: center; justify-content: center; gap: 5px;
-  font-size: 14px; font-weight: 700; color: var(--text); font-family: var(--mono); }
-.m svg { width: 15px; height: 15px; flex-shrink: 0; }
+.item__name { font-size: 24px; font-weight: 800; color: var(--text); margin-top: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }
+.item__st { display: inline-block; align-self: flex-start; font-size: 15px; color: #fff; background: var(--c);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-top: 11px; font-weight: 800; padding: 5px 13px; border-radius: 8px; }
+.item__metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: auto;
+  padding-top: 15px; border-top: 2px solid var(--border); }
+.m { display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 20px; font-weight: 800; color: var(--text); font-family: var(--mono); }
+.m svg { width: 21px; height: 21px; flex-shrink: 0; }
 .m--in { color: var(--green, #10b981); }
 .m--out { color: var(--accent-2, #14b8c4); }
 .m--miss { color: var(--text-faint); }

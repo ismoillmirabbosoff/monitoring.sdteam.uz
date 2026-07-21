@@ -57,6 +57,47 @@ const operators = computed(() => {
   return list
 })
 
+// ---- O'tkazib yuborilgan (propushen) qo'ng'iroqlar — chap panel ----
+const todayCalls = ref([])
+function isExt(n) { return /^[1-4]\d{2,3}$/.test(String(n || '')) }
+function opExtOf(c) {
+  if (c.direction === 'outbound') return isExt(c.caller_id_number) ? String(c.caller_id_number) : ''
+  return isExt(c.destination_number) ? String(c.destination_number) : ''
+}
+function clientPhone(c) {
+  const raw = c.direction === 'outbound' ? c.destination_number : c.caller_id_number
+  return String(raw || '').replace(/\D/g, '')
+}
+function callComp(c) { return compMap.value[opExtOf(c)] || '' }
+async function loadCalls() {
+  try {
+    const nowU = Math.floor(Date.now() / 1000)
+    const s = new Date(); s.setHours(0, 0, 0, 0)
+    todayCalls.value = await api.data('', Math.floor(s.getTime() / 1000), nowU)
+  } catch {}
+}
+// Hal qilinmagan o'tkazib yuborilgan kiruvchilar: mijoz keyin javob olsa/qayta bog'lansa — yo'qoladi.
+const missedCalls = computed(() => {
+  const calls = todayCalls.value
+  const answeredByPhone = {}
+  for (const c of calls) {
+    if ((c.user_talk_time || 0) > 0) {
+      const p = clientPhone(c); if (p) (answeredByPhone[p] ||= []).push(c.start_stamp)
+    }
+  }
+  const seen = new Set(); const rows = []
+  for (const c of [...calls].sort((a, b) => b.start_stamp - a.start_stamp)) {
+    if (c.direction === 'outbound' || (c.user_talk_time || 0) > 0 || (c.duration || 0) <= 5) continue
+    const p = clientPhone(c); if (!p || seen.has(p)) continue
+    if ((answeredByPhone[p] || []).some((ts) => ts > c.start_stamp)) continue
+    if (company.value && callComp(c) !== company.value) continue
+    seen.add(p)
+    rows.push({ phone: p, ext: opExtOf(c), start: c.start_stamp })
+  }
+  return rows
+})
+function fmtClock(ts) { const d = new Date(ts * 1000); const p = (n) => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}` }
+
 // ---- Grafana uslubidagi grid (surish + o'lchamini o'zgartirish) ----
 const GRID_COLS = 12, DEF_W = 3, DEF_H = 2
 const editable = ref(false)
@@ -139,7 +180,7 @@ async function loadStats() {
     opStats.value = map
   } catch {}
 }
-async function refresh() { await Promise.all([loadUsers(), loadHidden(), loadStats()]) }
+async function refresh() { await Promise.all([loadUsers(), loadHidden(), loadStats(), loadCalls()]) }
 
 // Jonli holat — backend bridge snapshot'ini olamiz (bridge OnlinePBX WS'ni 24/7 tinglaydi).
 async function loadLiveState() {
@@ -196,6 +237,28 @@ onUnmounted(() => {
       </div>
     </header>
 
+    <div class="tv__body">
+      <!-- CHAP: o'tkazib yuborilgan qo'ng'iroqlar (javob berilsa yo'qoladi) -->
+      <aside class="tv__missed">
+        <div class="missed__head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>
+          <span>{{ t('tv.missed') }}</span>
+          <b class="missed__count">{{ missedCalls.length }}</b>
+        </div>
+        <div class="missed__list">
+          <a v-for="m in missedCalls" :key="m.phone" class="missed__row" :href="'tel:' + m.phone" :title="t('tv.callBack')">
+            <span class="missed__phone mono">{{ m.phone }}</span>
+            <span class="missed__meta">
+              <span v-if="m.ext" class="missed__op">{{ names[m.ext] || ('#' + m.ext) }}</span>
+              <span class="missed__time mono">{{ fmtClock(m.start) }}</span>
+            </span>
+          </a>
+          <div v-if="!missedCalls.length" class="missed__empty">{{ t('tv.noMissed') }} 🎉</div>
+        </div>
+      </aside>
+
+      <!-- O'NG: operator kartalari -->
+      <main class="tv__main">
     <div class="tv__toolbar">
       <button class="tv__editbtn" :class="{ active: editable }" @click="editable = !editable">
         {{ editable ? '🔓 ' + t('tv.editOn') : '🔒 ' + t('tv.editLayout') }}
@@ -259,6 +322,8 @@ onUnmounted(() => {
       </GridItem>
     </GridLayout>
     <div v-else class="tv__empty">—</div>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -294,6 +359,26 @@ onUnmounted(() => {
 .s-unknown { --c: #94a3b8; }
 
 /* Grafana uslubidagi grid toolbar */
+/* Ikki ustunli tana: chap = missed, o'ng = kartalar */
+.tv__body { display: flex; gap: 20px; align-items: flex-start; }
+.tv__main { flex: 1; min-width: 0; }
+.tv__missed { width: 300px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+.missed__head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+  font-weight: 700; font-size: 14px; }
+.missed__head svg { width: 17px; height: 17px; color: #dc2626; }
+.missed__count { margin-left: auto; background: #dc2626; color: #fff; font-size: 12px; padding: 2px 9px; border-radius: 999px; }
+.missed__list { max-height: calc(100vh - 210px); overflow-y: auto; }
+.missed__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 16px;
+  border-bottom: 1px solid var(--border); text-decoration: none; color: var(--text); transition: background 0.15s; }
+.missed__row:hover { background: color-mix(in srgb, #dc2626 9%, var(--surface)); }
+.missed__phone { font-size: 14px; font-weight: 600; }
+.missed__meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.missed__op { font-size: 11px; color: var(--text-dim); max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.missed__time { font-size: 11px; color: var(--text-faint); }
+.missed__empty { padding: 34px 16px; text-align: center; color: var(--text-faint); font-size: 13px; }
+@media (max-width: 900px) { .tv__body { flex-direction: column; } .tv__missed { width: 100%; } .missed__list { max-height: 300px; } }
+
 .tv__toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .tv__editbtn { background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
   padding: 9px 16px; font-size: 13px; border-radius: 10px; }
